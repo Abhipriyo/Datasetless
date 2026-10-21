@@ -1,0 +1,26 @@
+{
+  "name": "datasetless",
+  "version": "1.0.0",
+  "description": "Ask a question, get a dashboard. No dataset required. Made by Abhipriyo.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "author": "Abhipriyo",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
+    "echarts": "^6.1.0",
+    "html-to-image": "^1.11.13",
+    "lz-string": "^1.5.0",
+    "xlsx": "^0.18.5"
+  },
+  "private": true,
+  "type": "module"
+}

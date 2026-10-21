@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Datasetless — Ask a question. Get a dashboard. No dataset required.</title>
+    <meta name="description" content="Type a question and get a live dashboard built from public data, or bring your own CSV, Excel, link or table. SQL, charts and plain-English answers, all private in your browser. Made by Abhipriyo." />
+    <meta name="author" content="Abhipriyo" />
+    <meta name="theme-color" content="#131417" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
+    <meta property="og:title" content="Datasetless — dashboards without the dataset" />
+    <meta property="og:description" content="Ask a question, get the SQL, a chart and a two-line answer. Live public data or your own files, processed privately in your browser." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Zilla+Slab:wght@600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try { var t = localStorage.getItem('datasetless.theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>Datasetless needs JavaScript: it runs a SQL engine inside your browser.</noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

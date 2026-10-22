@@ -59,7 +59,7 @@ const header = h('header', { class: 'site-head no-print' },
     aiBtn, themeBtn));
 const main = h('main', { id: 'main' });
 const siteFoot = h('footer', { class: 'site-foot no-print' },
-  h('div', {}, h('span', { class: 'logo-small' }, logoMark(16), BRAND.product), ' — made by ', BRAND.authorUrl ? h('a', { href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, BRAND.author) : h('b', {}, BRAND.author), '.'),
+  h('div', {}, h('span', { class: 'logo-small' }, logoMark(16), BRAND.product), ' — made with ♥ by ', BRAND.authorUrl ? h('a', { href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, BRAND.author) : h('b', {}, BRAND.author), '.'),
   h('div', { class: 'foot-links' },
     BRAND.githubUrl ? h('a', { href: BRAND.githubUrl, target: '_blank', rel: 'noopener' }, 'Source code') : null,
     BRAND.contactUrl ? h('a', { href: BRAND.contactUrl, target: '_blank', rel: 'noopener' }, 'Hire me') : null,
@@ -135,6 +135,11 @@ const actions = {
     if (!plan) plan = planFromText(text);
     return openSource(plan, { push });
   },
+  surprise() {
+    const pool = [...SURPRISES].filter((q) => q !== lastSurprise);
+    lastSurprise = pool[Math.floor(Math.random() * pool.length)];
+    return actions.question(lastSurprise);
+  },
   sample: (id) => openSource({ type: 'sample', id }),
   gallery: (id) => { const g = GALLERY.find((x) => x.id === id); openSource({ ...normalisePlan(g.plan), gallery: g.id }); },
   upload: () => openUpload(),
@@ -145,11 +150,21 @@ const actions = {
 
 // ---------------- loading overlay ----------------
 let loadingEl = null;
+let quipTimer = null;
+const QUIPS = [
+  'Asking the World Bank nicely…', 'Sharpening the crayons…', 'Counting every single row…',
+  'Teaching bars to stand up straight…', 'Polishing the KPIs…', 'Convincing the numbers to talk…',
+  'Making the lines go up (honestly)…', 'Brewing some SQL…',
+];
 function showLoading(steps) {
   hideLoading();
   const list = h('ol', { class: 'load-steps' }, steps.map((s) => h('li', {}, h('span', { class: 'spinner' }), s)));
-  loadingEl = h('div', { class: 'loading', role: 'status', 'aria-live': 'polite' }, h('div', { class: 'loading-box' }, logoMark(36), list));
+  const quip = h('p', { class: 'load-quip' }, QUIPS[Math.floor(Math.random() * QUIPS.length)]);
+  const bars = h('div', { class: 'load-bars', 'aria-hidden': 'true' }, [0, 1, 2, 3, 4].map(() => h('span')));
+  loadingEl = h('div', { class: 'loading', role: 'status', 'aria-live': 'polite' }, h('div', { class: 'loading-box' }, bars, list, quip));
   document.body.append(loadingEl);
+  let qi = 0;
+  quipTimer = setInterval(() => { qi = (qi + 1) % QUIPS.length; quip.textContent = QUIPS[qi]; }, 1600);
   return {
     step(text) {
       [...list.children].forEach((li) => { li.classList.add('done'); li.querySelector('.spinner')?.replaceWith(icon('check', 15)); });
@@ -157,12 +172,22 @@ function showLoading(steps) {
     },
   };
 }
-function hideLoading() { loadingEl?.remove(); loadingEl = null; }
+function hideLoading() { clearInterval(quipTimer); loadingEl?.remove(); loadingEl = null; }
+
+const SURPRISES = [
+  'Which BRICS country has the highest life expectancy?', 'Internet users in India, China and Nigeria since 2005',
+  'Renewable energy share in Germany, India and the US', 'Inflation and unemployment in the G7',
+  'CO2 emissions per person: China vs USA vs India', 'Tourist arrivals in Thailand, Singapore and Malaysia',
+  'Women in the workforce across South Asia', 'Military spending in the US, China, Russia and India',
+  'Fertility rate in Japan, Korea and India since 1990', 'Population of the most populous countries',
+];
+let lastSurprise = null;
 
 // ---------------- core pipeline ----------------
 async function openSource(source, { initial = null, push = true, file = null } = {}) {
   if (busy) return;
   busy = true;
+  const t0 = performance.now();
   const L = showLoading(['Starting the query engine']);
   try {
     await getDB();
@@ -256,6 +281,7 @@ async function openSource(source, { initial = null, push = true, file = null } =
     setView({ destroy: () => handle?.destroy() });
     handle = await renderDashboard(main, {
       spec, profile, sourceInfo, planChip, questions, initial,
+      buildMs: performance.now() - t0,
       onHome: () => goHome(),
       onUpload: () => openUpload(sourceInfo.sample),
       onSettings: () => openSettings(),
@@ -264,6 +290,7 @@ async function openSource(source, { initial = null, push = true, file = null } =
       onChange,
     });
     window.scrollTo({ top: 0 });
+    if (push && !initial) confetti();
   } catch (e) {
     hideLoading();
     if (e.message !== 'cancelled') {
@@ -468,3 +495,18 @@ if (import.meta.env.VITE_PLAUSIBLE_DOMAIN) {
 // Warm the engine while the user reads the landing page.
 setTimeout(() => getDB().catch((e) => console.warn('DuckDB init failed', e)), 400);
 route();
+
+// A small celebration when a brand-new dashboard is built.
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const colors = ['#f5c84c', '#ff7eb6', '#5ad1a4', '#6aa6f0', '#b69cff', '#ff9f5a'];
+  const wrap = h('div', { class: 'confetti', 'aria-hidden': 'true' });
+  for (let i = 0; i < 70; i++) {
+    const p = h('i');
+    const x = (Math.random() - 0.5) * 900, y = -(180 + Math.random() * 380);
+    p.style.cssText = `--x:${x}px;--y:${y}px;--r:${Math.random() * 720 - 360}deg;--d:${0.9 + Math.random() * 0.8}s;background:${colors[i % colors.length]};left:${50 + (Math.random() - 0.5) * 20}%;width:${6 + Math.random() * 6}px;height:${8 + Math.random() * 8}px;border-radius:${Math.random() > 0.5 ? '50%' : '2px'}`;
+    wrap.append(p);
+  }
+  document.body.append(wrap);
+  setTimeout(() => wrap.remove(), 2000);
+}

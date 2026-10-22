@@ -22,7 +22,7 @@ export async function renderDashboard(root, ctx) {
 
   // ---------- header ----------
   const src = ctx.sourceInfo;
-  const badge = (cls, ic, text) => h('span', { class: `badge ${cls}` }, ic ? icon(ic, 13) : null, text);
+  const badge = (cls, ic, ...text) => h('span', { class: `badge ${cls}` }, ic ? icon(ic, 13) : null, ...text);
   const badges = h('div', { class: 'badges' },
     src.kind === 'live' ? badge('badge-live', null, h('span', { class: 'pulse' }), 'Live · ' + src.provider) : null,
     src.kind === 'sample' ? badge('badge-sample', 'info', 'Sample data') : null,
@@ -109,7 +109,7 @@ export async function renderDashboard(root, ctx) {
     if (spec.time && periods.length) parts.push(`${fmtPeriod(periods[0], spec.time.grain)} – ${fmtPeriod(periods[periods.length - 1], spec.time.grain)}`);
     if (src.detail) parts.push(src.detail);
     if (src.updated) parts.push(`updated ${src.updated}`);
-    metaLine.textContent = parts.join(' · ');
+    metaLine.replaceChildren(parts.join(' · '), ctx.buildMs ? h('span', { class: 'built-in' }, `⚡ built in ${(ctx.buildMs / 1000).toFixed(1)}s`) : '');
   }
 
   function buildFilters() {

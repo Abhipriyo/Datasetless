@@ -19,6 +19,9 @@ export async function renderDashboard(root, ctx) {
   const cards = new Map();
   let renderToken = 0;
   const cur = spec.currency;
+  const embed = ctx.embed || null;              // set when running inside a host app
+  const contract = spec.contract || null;       // metrics contract, if any
+  const emit = (type, detail) => { try { ctx.onEvent?.(type, detail); } catch (e) { console.warn(e); } };
 
   // ---------- header ----------
   const src = ctx.sourceInfo;
@@ -29,6 +32,8 @@ export async function renderDashboard(root, ctx) {
     src.kind === 'file' ? badge('badge-private', 'lock', 'Your file · stays on this device') : null,
     src.kind === 'link' ? badge('badge-live', 'link', 'From a link') : null,
     src.kind === 'paste' ? badge('badge-private', 'table', 'Pasted table') : null,
+    src.kind === 'host' ? badge('badge-private', 'lock', 'Private · processed in your browser') : null,
+    contract?.metrics?.length ? badge('badge-verified', 'check', `${contract.metrics.filter((m) => contract.results[m.id]?.status === 'pass' && m.tests.length).length}/${contract.metrics.length} metrics verified`) : null,
   );
   const titleEl = h('h1', { class: 'dash-title', spellcheck: 'false' }, spec.title);
   const editTitle = h('button', { class: 'icon-btn no-export', 'aria-label': 'Rename dashboard', title: 'Rename' }, icon('edit', 16));
@@ -45,9 +50,11 @@ export async function renderDashboard(root, ctx) {
   const metaLine = h('p', { class: 'dash-meta' });
   const actions = h('div', { class: 'dash-actions no-export no-print' },
     ctx.onEditSource ? h('button', { class: 'btn btn-ghost', onclick: ctx.onEditSource }, icon('edit', 16), 'Edit data') : null,
-    h('button', { class: 'btn btn-ghost', onclick: () => ctx.onShare?.() }, icon('share', 16), 'Share'),
-    h('button', { class: 'btn btn-ghost', onclick: exportPNG }, icon('download', 16), 'PNG'),
-    h('button', { class: 'btn btn-ghost', onclick: () => window.print() }, icon('print', 16), 'PDF'),
+    ctx.onMetrics ? h('button', { class: 'btn btn-ghost', onclick: ctx.onMetrics }, icon('check', 16), 'Metrics') : null,
+    ctx.onEmbed ? h('button', { class: 'btn btn-ghost', onclick: ctx.onEmbed }, icon('code', 16), 'Embed') : null,
+    ctx.onShare ? h('button', { class: 'btn btn-ghost', onclick: () => ctx.onShare() }, icon('share', 16), 'Share') : null,
+    embed?.allowExport === false ? null : h('button', { class: 'btn btn-ghost', onclick: exportPNG }, icon('download', 16), 'PNG'),
+    embed?.allowExport === false ? null : h('button', { class: 'btn btn-ghost', onclick: () => window.print() }, icon('print', 16), 'PDF'),
   );
   const head = h('section', { class: 'dash-head' },
     h('div', { class: 'dash-head-main' }, badges, h('div', { class: 'title-row' }, titleEl, editTitle), metaLine),
@@ -74,18 +81,19 @@ export async function renderDashboard(root, ctx) {
   // ---------- KPIs, checks, ask, grid ----------
   const kpiRow = h('section', { class: 'kpis', 'aria-label': 'Key metrics' });
   const checksEl = h('section', { class: 'checks', 'aria-label': 'Data checks' });
+  const catalogEl = contract?.metrics?.length ? buildCatalog() : null;
   const grid = h('section', { class: 'grid', 'aria-label': 'Charts' });
   const hiddenBar = h('div', { class: 'hidden-bar no-print no-export' });
   const askPanel = buildAskPanel();
   const footer = buildFooter();
-  const exportArea = h('div', { class: 'dash-export' }, head, plan, banner, filterBar, activeChips, kpiRow, checksEl, askPanel, grid, hiddenBar, footer);
+  const exportArea = h('div', { class: 'dash-export' }, head, plan, banner, filterBar, activeChips, kpiRow, checksEl, catalogEl, askPanel, grid, hiddenBar, footer);
 
   root.replaceChildren(
     h('div', { class: 'dash' },
-      h('div', { class: 'dash-top no-print no-export' },
-        h('button', { class: 'btn btn-ghost btn-sm', onclick: ctx.onHome }, icon('back', 16), 'New dashboard')),
+      ctx.onHome ? h('div', { class: 'dash-top no-print no-export' },
+        h('button', { class: 'btn btn-ghost btn-sm', onclick: ctx.onHome }, icon('back', 16), 'New dashboard')) : null,
       exportArea));
-  document.title = `${spec.title} · ${BRAND.product}`;
+  if (!embed) document.title = `${spec.title} · ${BRAND.product}`;
   updateMeta();
 
   runChecks(spec, profile).then(renderChecks).catch((e) => console.warn(e));
@@ -98,6 +106,7 @@ export async function renderDashboard(root, ctx) {
   window.addEventListener('themechange', onTheme);
 
   await refresh();
+  emit('ready', { title: spec.title, rows: spec.n, metrics: (contract?.metrics || []).map((m) => ({ id: m.id, status: contract.results[m.id]?.status })) });
   return {
     destroy() { ro.disconnect(); mq.removeEventListener?.('change', onTheme); window.removeEventListener('themechange', onTheme); instances.forEach((i) => i.dispose()); },
     getState: () => ({ ...state }),
@@ -117,7 +126,7 @@ export async function renderDashboard(root, ctx) {
     if (spec.dim && dimOptions.length > 1) {
       const label = spec.dim;
       const summary = h('summary', { class: 'filter-btn' }, icon('filter', 15), h('span', { class: 'filter-label' }), icon('chevron', 14));
-      const search = h('input', { type: 'search', placeholder: `Search ${label.toLowerCase()}…`, class: 'input input-sm', 'aria-label': `Search ${label}` });
+      const search = h('input', { type: 'search', placeholder: `Search ${colWord(label)}…`, class: 'input input-sm', 'aria-label': `Search ${label}` });
       const list = h('div', { class: 'check-list' });
       const renderList = () => {
         const term = search.value.trim().toLowerCase();
@@ -155,7 +164,7 @@ export async function renderDashboard(root, ctx) {
   }
 
   function updateFilterLabels() {
-    if (filterBar._dimLabel) filterBar._dimLabel.textContent = state.dimValues.length ? `${spec.dim}: ${state.dimValues.length === 1 ? state.dimValues[0] : state.dimValues.length + ' selected'}` : `All ${pluralWord(spec.dim)}`;
+    if (filterBar._dimLabel) filterBar._dimLabel.textContent = state.dimValues.length ? `${colTitle(spec.dim)}: ${state.dimValues.length === 1 ? state.dimValues[0] : state.dimValues.length + ' selected'}` : `All ${pluralWord(colWord(spec.dim))}`;
     activeChips.replaceChildren(...state.dimValues.map((v) => h('button', { class: 'chip', onclick: () => toggleDim(v, false), 'aria-label': `Remove filter ${v}` }, v, icon('x', 12))));
   }
 
@@ -163,7 +172,7 @@ export async function renderDashboard(root, ctx) {
     state.dimValues = on ? [...new Set([...state.dimValues, v])] : state.dimValues.filter((x) => x !== v);
     afterFilter();
   }
-  function afterFilter() { updateFilterLabels(); refresh(); ctx.onChange?.(); }
+  function afterFilter() { updateFilterLabels(); refresh(); ctx.onChange?.(); emit('filter', { dimension: spec.dim, values: [...state.dimValues], from: state.from, to: state.to }); }
 
   // ---------- refresh ----------
   async function refresh() {
@@ -212,7 +221,7 @@ export async function renderDashboard(root, ctx) {
             h('span', { class: 'delta-label' }, ` ${deltaLabel}`))
           : h('span', { class: 'delta flat' }, ' ');
         const tile = h('div', { class: 'kpi' },
-          h('div', { class: 'kpi-label' }, m.label),
+          h('div', { class: 'kpi-label' }, m.label, m.defined ? metricMark(m) : null),
           h('div', { class: 'kpi-value' }, fmt(value, m.format, cur)),
           h('div', { class: 'kpi-foot' }, deltaEl),
           h('div', { class: 'kpi-context' }, context));
@@ -227,6 +236,18 @@ export async function renderDashboard(root, ctx) {
   }
 
   function renderChecks(list) {
+    if (contract) {
+      const fails = [];
+      for (const m of contract.metrics) {
+        const r = contract.results[m.id];
+        if (!r) continue;
+        if (r.status === 'fail') fails.push({ level: 'serious', title: `${m.label} failed its tests`, text: r.details.join('; ') + '.' });
+        if (r.status === 'error') fails.push({ level: 'serious', title: `${m.label} could not be computed`, text: r.details.join('; ') + '. Check its definition in metrics.json.' });
+      }
+      for (const e of contract.errors || []) fails.push({ level: 'warning', title: 'Metrics file', text: e });
+      if (contract.skipped?.length) fails.push({ level: 'info', title: `${contract.skipped.length} more metric${contract.skipped.length === 1 ? '' : 's'} need a Pro license`, text: `The Free plan shows ${contract.metrics.length} metrics. Not shown: ${contract.skipped.join(', ')}.` });
+      list = [...fails, ...list.filter((c) => !(fails.length && c.level === 'good'))];
+    }
     const order = { serious: 0, warning: 1, info: 2, good: 3 };
     list.sort((a, b) => order[a.level] - order[b.level]);
     const ic = { serious: 'alert', warning: 'alert', info: 'info', good: 'check' };
@@ -284,7 +305,7 @@ export async function renderDashboard(root, ctx) {
     const hideBtn = h('button', { class: 'icon-btn', title: c.kind === 'ai' ? 'Remove' : 'Hide chart', 'aria-label': 'Hide chart', onclick: () => hideChart(c) }, icon(c.kind === 'ai' ? 'x' : 'hide', 16));
     card.el = h('article', { class: `card ${c.wide ? 'card-wide' : ''} ${c.kind === 'ai' ? 'card-ai' : ''}` },
       h('header', { class: 'card-head' },
-        h('div', { class: 'card-titles' }, c.kind === 'ai' ? h('div', { class: 'ai-q' }, icon('spark', 13), c.question || 'SQL query') : null, title, sub),
+        h('div', { class: 'card-titles' }, c.kind === 'ai' ? h('div', { class: 'ai-q' }, icon('spark', 13), c.question || 'SQL query') : chartMetricChip(c), title, sub),
         h('div', { class: 'card-tools no-export no-print' }, sqlBtn, tblBtn, csvBtn, hideBtn)),
       body, explain, sqlBox, tableBox);
     return card;
@@ -337,12 +358,12 @@ export async function renderDashboard(root, ctx) {
       if (!card.tableBox.hidden) fillTable(card);
       if (!rows.length) { card.title.textContent = card.title.textContent === '…' ? 'No data' : card.title.textContent; card.sub.textContent = ''; setNonChart(c.id, card, h('div', { class: 'empty' }, 'No data for the current filters.')); return; }
       const g = spec.time?.grain;
-      const onPick = (name) => { if (spec.dim && name && dimOptions.some((o) => o.v === name)) toggleDim(name, !state.dimValues.includes(name)); };
+      const onPick = (name) => { if (spec.dim && name && dimOptions.some((o) => o.v === name)) { emit('select', { dimension: spec.dim, value: name }); toggleDim(name, !state.dimValues.includes(name)); } };
       switch (c.kind) {
         case 'trend': {
           const m = measureById(spec, c.measure);
           card.title.textContent = trendTitle(m, rows, g, cur);
-          card.sub.textContent = `${m.label} by ${grainName(g)}${m.additive || m.stock || m.derived ? '' : ', average'}`;
+          card.sub.textContent = `${m.label} by ${grainName(g)}${m.additive || m.stock || m.derived || m.defined ? '' : ', average'}`;
           setChart(c.id, card, lineOption({ periods: rows.map((r) => r.period), series: [{ name: m.label, data: rows.map((r) => r.value) }], grain: g, format: m.format, currency: cur, area: true, colors: [t.single] }));
           break;
         }
@@ -352,15 +373,15 @@ export async function renderDashboard(root, ctx) {
           const names = [...new Set(rows.map((r) => r.series))].sort((a, b) => idxOf(spec.colorOrder, a) - idxOf(spec.colorOrder, b));
           const lookup = new Map(rows.map((r) => [`${r.series}|${r.period}`, r.value]));
           card.title.textContent = splitTitle(m, rows, g, cur);
-          card.sub.textContent = `${m.label} by ${grainName(g)} and ${c.dim.toLowerCase()}${names.length >= (c.top || 6) ? ` · top ${names.length}` : ''}`;
+          card.sub.textContent = `${m.label} by ${grainName(g)} and ${colWord(c.dim)}${names.length >= (c.top || 6) ? ` · top ${names.length}` : ''}`;
           setChart(c.id, card, lineOption({ periods: periodsAll, series: names.map((n) => ({ name: n, data: periodsAll.map((p) => lookup.get(`${n}|${p}`) ?? null) })), grain: g, format: m.format, currency: cur, colors: assign(names) }), (p) => onPick(p.seriesName));
           break;
         }
         case 'rank': {
           const m = measureById(spec, c.measure);
-          card.title.textContent = rankTitle(m, rows, c.dim, cur);
+          card.title.textContent = rankTitle(m, rows, colWord(c.dim), cur);
           const periodsSeen = [...new Set(rows.map((r) => r.period).filter(Boolean))];
-          card.sub.textContent = `${m.label} by ${c.dim.toLowerCase()}${c.latest && periodsSeen.length ? ` · latest (${periodsSeen.length === 1 ? fmtPeriod(periodsSeen[0], g) : 'most recent available'})` : ''}${rows.length >= 10 ? ' · top 10' : ''}`;
+          card.sub.textContent = `${m.label} by ${colWord(c.dim)}${c.latest && periodsSeen.length ? ` · latest (${periodsSeen.length === 1 ? fmtPeriod(periodsSeen[0], g) : 'most recent available'})` : ''}${rows.length >= 10 ? ' · top 10' : ''}`;
           const colorsByLabel = c.dim === spec.dim && spec.panel ? assign(rows.map((r) => r.label)) : null;
           setChart(c.id, card, barOption({ labels: rows.map((r) => r.label), values: rows.map((r) => r.value), format: m.format, currency: cur, color: t.single, colorsByLabel }), (p) => { if (c.dim === spec.dim) onPick(p.name); });
           setHeight(card, Math.max(180, rows.length * 34 + 30));
@@ -370,7 +391,7 @@ export async function renderDashboard(root, ctx) {
           const mx = measureById(spec, c.mx), my = measureById(spec, c.my);
           const pts = rows.map((r) => ({ label: r.label, x: r.x, y: r.y, period: r.period })).filter((p) => p.x != null && p.y != null);
           card.title.textContent = scatterTitle(mx, my, pts);
-          card.sub.textContent = `Each dot is a ${c.dim.toLowerCase()}${c.latest ? ', latest available year' : ''}`;
+          card.sub.textContent = `Each dot is a ${colWord(c.dim)}${c.latest ? ', latest available year' : ''}`;
           const colors = spec.panel ? assign(pts.map((p) => p.label)) : pts.map(() => t.single);
           setChart(c.id, card, scatterOption({ points: pts, mx, my, currency: cur, colors, xLabel: mx.label, yLabel: my.label }), (p) => onPick(p.data.label));
           break;
@@ -383,7 +404,7 @@ export async function renderDashboard(root, ctx) {
           break;
         }
         case 'table': {
-          card.title.textContent = `${c.dim} breakdown`;
+          card.title.textContent = `${colTitle(c.dim)} breakdown`;
           card.sub.textContent = c.latest ? 'Latest available value for each' : 'Totals and averages for the current filters';
           setNonChart(c.id, card, dataTable(columns, rows, (col) => spec.measures.find((m) => m.label === col)));
           break;
@@ -475,6 +496,9 @@ export async function renderDashboard(root, ctx) {
   // ---------- ask panel ----------
   function buildAskPanel() {
     const ai = getAI();
+    const showAsk = embed ? !!(embed.ask && ai) : true;
+    const showSql = embed ? !!embed.sql : true;
+    if (!showAsk && !showSql) return null;
     const input = h('input', { class: 'input ask-input', type: 'text', placeholder: suggestions()[0] ? `e.g. ${suggestions()[0]}` : 'Ask a question about this data', 'aria-label': 'Ask a question about this data' });
     const status = h('div', { class: 'ask-status', 'aria-live': 'polite' });
     const go = h('button', { class: 'btn btn-primary' }, icon('spark', 16), 'Ask');
@@ -484,7 +508,7 @@ export async function renderDashboard(root, ctx) {
     const askPane = h('div', { class: 'pane' },
       h('form', { class: 'ask-row', onsubmit: (e) => { e.preventDefault(); ask(input.value); } }, input, go),
       h('div', { class: 'suggestions' }, suggestions().map((s) => h('button', { type: 'button', class: 'chip-btn', onclick: () => { input.value = s; ask(s); } }, s))),
-      !ai ? h('p', { class: 'hint' }, icon('lock', 13), ' Asking in plain English uses your own AI key (stored only in this browser). ', h('button', { class: 'link-btn', onclick: () => ctx.onSettings?.() }, 'Add a key'), ' — or use the SQL tab, which needs no key.') : null);
+      !ai && !embed ? h('p', { class: 'hint' }, icon('lock', 13), ' Asking in plain English uses your own AI key (stored only in this browser). ', h('button', { class: 'link-btn', onclick: () => ctx.onSettings?.() }, 'Add a key'), ' — or use the SQL tab, which needs no key.') : null);
     const sqlPane = h('div', { class: 'pane', hidden: true },
       h('form', { class: 'sql-row', onsubmit: (e) => { e.preventDefault(); runUserSQL(sqlInput.value); } }, sqlInput, h('div', { class: 'sql-side' }, runSql, h('p', { class: 'hint' }, 'Table name: ', h('code', {}, 'data'), '. Read-only, runs in your browser.'))));
     const tabBtn = (label, pane, other, ic) => {
@@ -494,8 +518,9 @@ export async function renderDashboard(root, ctx) {
     };
     const t1 = tabBtn('Ask in plain English', askPane, sqlPane, 'spark');
     const t2 = tabBtn('Write SQL', sqlPane, askPane, 'code');
-    t1.classList.add('on');
-    tabs.append(t1, t2);
+    if (showAsk) t1.classList.add('on'); else { askPane.hidden = true; sqlPane.hidden = false; t2.classList.add('on'); }
+    tabs.append(...(showAsk ? [t1] : []), ...(showSql ? [t2] : []));
+    if (tabs.children.length === 1) tabs.hidden = true;
     sqlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runUserSQL(sqlInput.value); } });
 
     async function ask(question) {
@@ -555,6 +580,43 @@ export async function renderDashboard(root, ctx) {
     return h('section', { class: 'ask no-print no-export', 'aria-label': 'Ask your data' }, tabs, askPane, sqlPane, status);
   }
 
+  // ---------- metrics contract UI ----------
+  function metricStatus(m) {
+    const r = contract?.results?.[m.metricId];
+    if (!r) return { cls: 'defined', text: 'Defined', icon: 'info' };
+    if (r.status === 'pass' && r.tests) return { cls: 'verified', text: 'Verified', icon: 'check' };
+    if (r.status === 'pass') return { cls: 'defined', text: 'Defined', icon: 'info' };
+    return { cls: 'failing', text: r.status === 'error' ? 'Broken' : 'Tests failing', icon: 'alert' };
+  }
+  function metricTitle(m) {
+    const r = contract?.results?.[m.metricId];
+    return [m.label, m.description, m.owner ? `Owner: ${m.owner}` : '', `SQL: ${m.expr}`, r ? `Tests: ${r.tests ? (r.status === 'pass' ? `${r.tests} passed` : r.details.join('; ')) : 'none defined'}` : ''].filter(Boolean).join('\n');
+  }
+  function metricMark(m) {
+    const st = metricStatus(m);
+    return h('span', { class: `mchip mchip-${st.cls}`, title: metricTitle(m) }, icon(st.icon, 11), st.text);
+  }
+  function chartMetricChip(c) {
+    const m = measureById(spec, c.measure || c.mx);
+    return m?.defined ? h('div', { class: 'chip-row' }, metricMark(m)) : null;
+  }
+  function buildCatalog() {
+    const rows = contract.metrics.map((m) => {
+      const meas = spec.measures.find((x) => x.metricId === m.id) || { metricId: m.id, label: m.label, expr: m.sql, description: m.description, owner: m.owner };
+      const r = contract.results[m.id] || { details: [], tests: 0 };
+      return h('div', { class: 'cat-row' },
+        h('div', { class: 'cat-main' }, h('div', { class: 'cat-name' }, h('b', {}, m.label), metricMark(meas)),
+          m.description ? h('p', { class: 'cat-desc' }, m.description) : null,
+          h('code', { class: 'cat-sql' }, m.sql)),
+        h('div', { class: 'cat-side' },
+          m.owner ? h('div', {}, h('span', { class: 'muted' }, 'Owner '), m.owner) : null,
+          h('div', {}, h('span', { class: 'muted' }, 'Tests '), r.tests ? (r.status === 'pass' ? `${r.tests} passing` : r.details.join('; ')) : 'none')));
+    });
+    return h('section', { 'aria-label': 'Metric definitions' }, h('details', { class: 'catalog' },
+      h('summary', {}, icon('check', 16), h('span', {}, `Metric definitions · ${contract.metrics.length} defined in metrics.json`), icon('chevron', 14)),
+      h('div', { class: 'cat-list' }, rows)));
+  }
+
   function suggestions() {
     if (ctx.questions?.length) return ctx.questions;
     const m0 = spec.measures[0], m1 = spec.measures[1];
@@ -568,6 +630,12 @@ export async function renderDashboard(root, ctx) {
 
   // ---------- footer & export ----------
   function buildFooter() {
+    if (embed) {
+      if (!embed.badge) return null;
+      return h('footer', { class: 'dash-foot embed-foot' },
+        h('span', { class: 'muted' }, 'Every chart shows its SQL. Data processed privately in this browser.'),
+        h('a', { class: 'powered', href: embed.siteUrl || '#', target: '_blank', rel: 'noopener' }, 'Powered by ', h('b', {}, BRAND.product), ' · made by ', BRAND.author));
+    }
     const by = BRAND.authorUrl ? h('a', { href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, BRAND.author) : h('b', {}, BRAND.author);
     return h('footer', { class: 'dash-foot' },
       h('div', { class: 'foot-src' }, h('b', {}, 'Source: '), src.sourceText,
@@ -593,6 +661,9 @@ export async function renderDashboard(root, ctx) {
   }
 }
 
+// Column names as words: "product_line" -> "product line" / "Product line".
+const colWord = (c) => String(c).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^[A-Z](?=[a-z])/, (x) => x.toLowerCase());
+const colTitle = (c) => { const w = colWord(c); return w.charAt(0).toUpperCase() + w.slice(1); };
 const idxOf = (arr, v) => { const i = arr.indexOf(v); return i < 0 ? 999 : i; };
 const grainName = (g) => ({ day: 'day', week: 'week', month: 'month', quarter: 'quarter', year: 'year' }[g] || 'period');
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'dashboard';

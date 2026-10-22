@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Acme Commerce · Reports (Datasetless demo)</title>
+  <meta name="robots" content="noindex" />
+  <style>
+    :root { --bg: #f4f5f9; --panel: #ffffff; --ink: #141826; --ink2: #5b6275; --line: #e3e6ef; --brand: #4f46e5; --brand-soft: #eef0ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--ink); }
+    .demo-bar { background: #141826; color: #fff; font-size: 13px; padding: 8px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .demo-bar a { color: #f5c84c; }
+    .shell { display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: calc(100vh - 36px); }
+    aside { background: var(--panel); border-right: 1px solid var(--line); padding: 20px 14px; }
+    .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; margin: 0 6px 24px; }
+    .logo i { width: 30px; height: 30px; border-radius: 9px; background: var(--brand); display: inline-block; }
+    nav a { display: flex; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 10px; color: var(--ink2); text-decoration: none; font-weight: 500; }
+    nav a.on { background: var(--brand-soft); color: var(--brand); }
+    main { padding: 22px 28px 40px; min-width: 0; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+    h1 { font-size: 24px; margin: 0; }
+    .sub { color: var(--ink2); margin: 2px 0 0; font-size: 14px; }
+    .tenant { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px 6px 12px; }
+    .tenant label { font-size: 12px; color: var(--ink2); }
+    select { font: inherit; border: 0; background: transparent; font-weight: 600; padding: 4px; cursor: pointer; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    .toggle { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; user-select: none; }
+    .toggle input { accent-color: var(--brand); }
+    .frame { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 6px; }
+    .side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 18px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; min-width: 0; }
+    .card h3 { margin: 0 0 8px; font-size: 14px; }
+    pre { margin: 0; background: #0f1220; color: #d7dcff; border-radius: 10px; padding: 12px; font-size: 12.5px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+    #log { font: 12.5px/1.5 ui-monospace, Menlo, monospace; max-height: 180px; overflow: auto; color: var(--ink2); }
+    #log div { border-bottom: 1px dashed var(--line); padding: 3px 0; }
+    #log b { color: var(--brand); }
+    @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } aside { display: none; } main { padding: 16px; } .side { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="demo-bar">
+    <span>🧪 <b>Demo:</b> this pretend SaaS app (“Acme Commerce”) embeds Datasetless with one HTML tag.</span>
+    <a href="../#/developers">How to integrate →</a>
+    <a href="../#/pricing">Pricing →</a>
+  </div>
+  <div class="shell">
+    <aside>
+      <div class="logo"><i></i>Acme Commerce</div>
+      <nav>
+        <a href="#">🏠 Home</a>
+        <a href="#">📦 Orders</a>
+        <a href="#">👥 Customers</a>
+        <a href="#" class="on">📊 Reports</a>
+        <a href="#">⚙️ Settings</a>
+      </nav>
+    </aside>
+    <main>
+      <div class="top">
+        <div>
+          <h1>Reports</h1>
+          <p class="sub">Each customer of Acme sees only their own data. Switch customers to see isolation in action.</p>
+        </div>
+        <div class="tenant">
+          <label for="tenant">Logged in as</label>
+          <select id="tenant">
+            <option value="bluebird">Bluebird Retail</option>
+            <option value="kite">Kite Foods</option>
+            <option value="orbit">Orbit Labs</option>
+          </select>
+        </div>
+      </div>
+      <div class="controls">
+        <label class="toggle"><input type="checkbox" id="pro" /> White-label with Acme’s brand colour (Pro preview)</label>
+        <label class="toggle"><input type="checkbox" id="dark" /> Dark theme</label>
+        <label class="toggle"><input type="checkbox" id="sql" /> Let customers write SQL</label>
+      </div>
+
+      <div class="frame">
+        <datasetless-dashboard id="dash" source="data/bluebird.csv" metrics="metrics.json" title="Bluebird Retail · Store performance" theme="light"></datasetless-dashboard>
+      </div>
+
+      <div class="side">
+        <div class="card">
+          <h3>The integration code on this page</h3>
+          <pre id="code"></pre>
+        </div>
+        <div class="card">
+          <h3>Events from the dashboard (your app can react to these)</h3>
+          <div id="log"><div>Waiting for events…</div></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../embed.js"></script>
+  <script>
+    var dash = document.getElementById('dash');
+    var names = { bluebird: 'Bluebird Retail', kite: 'Kite Foods', orbit: 'Orbit Labs' };
+    function render() {
+      var t = document.getElementById('tenant').value;
+      var pro = document.getElementById('pro').checked;
+      // In a real app the source is your API, e.g. /api/reports/data, and your login picks the tenant.
+      var attrs = {
+        source: 'data/' + t + '.csv',
+        metrics: 'metrics.json',
+        title: names[t] + ' · Store performance',
+        theme: document.getElementById('dark').checked ? 'dark' : 'light',
+      };
+      if (pro) { attrs.license = 'preview'; attrs.accent = '#4f46e5'; }
+      if (document.getElementById('sql').checked) attrs.sql = '';
+      ['source', 'metrics', 'title', 'theme', 'license', 'accent', 'sql'].forEach(function (k) {
+        if (k in attrs) dash.setAttribute(k, attrs[k]); else dash.removeAttribute(k);
+      });
+      var lines = ['<script src="https://YOUR-DATASETLESS-HOST/embed.js" async><\/script>', '', '<datasetless-dashboard'];
+      lines.push('  source="/api/reports/data"   <!-- here: ' + attrs.source + ' -->');
+      lines.push('  metrics="/metrics.json"');
+      lines.push('  theme="' + attrs.theme + '"');
+      if (pro) { lines.push('  accent="#4f46e5"'); lines.push('  license="YOUR_PRO_KEY">'); } else lines[lines.length - 1] += '>';
+      if (attrs.sql === '') lines.splice(lines.length - 1, 0, '  sql');
+      lines.push('</datasetless-dashboard>');
+      document.getElementById('code').textContent = lines.join('\n');
+    }
+    ['tenant', 'pro', 'dark', 'sql'].forEach(function (id) { document.getElementById(id).addEventListener('change', render); });
+    render();
+    var log = document.getElementById('log');
+    ['ready', 'filter', 'select', 'error'].forEach(function (name) {
+      dash.addEventListener(name, function (e) {
+        if (log.firstChild && log.firstChild.textContent === 'Waiting for events…') log.innerHTML = '';
+        var row = document.createElement('div');
+        row.innerHTML = '<b>' + name + '</b> ';
+        row.appendChild(document.createTextNode(JSON.stringify(e.detail)));
+        log.prepend(row);
+      });
+    });
+  </script>
+</body>
+</html>

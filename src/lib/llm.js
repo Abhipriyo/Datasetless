@@ -10,7 +10,13 @@ export const PROVIDERS = {
   compatible: { name: 'OpenAI-compatible (Groq, OpenRouter, local…)', model: '', keyHint: 'API key', needsBase: true },
 };
 
+// When embedded, the host application supplies a transport that forwards prompts
+// to its own AI endpoint, so no key ever reaches the browser.
+let transport = null;
+export function setTransport(fn) { transport = typeof fn === 'function' ? fn : null; }
+
 export function getAI() {
+  if (transport) return { provider: 'host', key: 'host' };
   try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); return s && s.key ? s : null; } catch { return null; }
 }
 export function saveAI(s) {
@@ -18,6 +24,11 @@ export function saveAI(s) {
 }
 
 async function call({ system, user, image, maxTokens = 1800 }) {
+  if (transport) {
+    const text = await transport({ system, user, image: image ? { type: image.type } : null, maxTokens });
+    if (typeof text !== 'string') throw new Error('The AI endpoint returned no text.');
+    return text;
+  }
   const s = getAI();
   if (!s) throw new Error('Add an AI key in Settings to use this.');
   const model = s.model || PROVIDERS[s.provider]?.model;
@@ -70,7 +81,10 @@ function schemaText(spec, profile, sample) {
     const extra = c.kind === 'measure' ? ` range ${c.min}..${c.max}` : c.kind === 'time' ? ` from ${c.min} to ${c.max}` : c.kind === 'dim' ? ` ${c.distinct} distinct values` : '';
     return `- "${c.name}" ${c.type} (${c.kind}${extra})`;
   }).join('\n');
-  return `Table "data" (${spec.n} rows) columns:\n${cols}\n\nSample rows (JSON):\n${JSON.stringify(sample.slice(0, 5))}`;
+  const defs = spec.contract?.metrics?.length
+    ? `\n\nAPPROVED METRIC DEFINITIONS. These are the company's official numbers. Whenever the question involves one of them, you MUST use exactly this SQL expression and name the result column with the metric label:\n${spec.contract.metrics.map((m) => `- ${m.label}: ${m.sql}${m.description ? ` (${m.description})` : ''}`).join('\n')}`
+    : '';
+  return `Table "data" (${spec.n} rows) columns:\n${cols}${defs}\n\nSample rows (JSON):\n${JSON.stringify(sample.slice(0, 5))}`;
 }
 
 const SQL_SYSTEM = `You are a senior data analyst writing DuckDB SQL for a dashboard app.

@@ -1,12 +1,15 @@
 {
   "name": "datasetless",
   "version": "1.0.0",
-  "description": "Ask a question, get a dashboard. No dataset required. Made by Abhipriyo.",
+  "description": "Customer-facing analytics that runs inside your app. Made by Abhipriyo.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "license:keygen": "node scripts/license.mjs keygen",
+    "license:issue": "node scripts/license.mjs issue",
+    "demo:data": "node scripts/gen-demo-data.mjs"
   },
   "author": "Abhipriyo",
   "license": "MIT",
@@ -16,6 +19,7 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
+    "@noble/curves": "^1.9.7",
     "echarts": "^6.1.0",
     "html-to-image": "^1.11.13",
     "lz-string": "^1.5.0",

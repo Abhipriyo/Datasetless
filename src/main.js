@@ -3,13 +3,13 @@ import { h, icon, toast, modal, choose } from './ui/components.js';
 import { renderLanding, GALLERY } from './ui/landing.js';
 import { renderDashboard } from './ui/dashboard.js';
 import { getDB } from './lib/db.js';
-import { loadTable, loadObjects, loadFile, loadBuffer } from './lib/load.js';
 import { parsePasted } from './lib/parse.js';
-import { profileTable } from './lib/profile.js';
-import { buildSpec } from './lib/autospec.js';
-import { loadWorldBank, planFromText, normalisePlan, INDICATORS, COUNTRY_NAME, parseCountries } from './lib/sources/worldbank.js';
-import { normaliseUrl, fetchLink } from './lib/sources/links.js';
+import { planFromText, normalisePlan, INDICATORS, COUNTRY_NAME, parseCountries } from './lib/sources/worldbank.js';
 import { SAMPLES, SAMPLE_BY_ID } from './lib/samples.js';
+import { loadSource, buildModel } from './lib/pipeline.js';
+import { parseContract, starterContract, FREE_METRIC_LIMIT } from './lib/metrics.js';
+import { verifyLicense, savedLicense, saveLicense, PLANS } from './lib/license.js';
+import { renderPricing, renderDevelopers } from './ui/pages.js';
 import { encodeShare, decodeShare, isShareable } from './lib/share.js';
 import { getAI, saveAI, PROVIDERS, testAI, planWorldBank, tableFromImage } from './lib/llm.js';
 import { guardSelect } from './lib/sqlguard.js';
@@ -19,6 +19,9 @@ const app = document.getElementById('app');
 let view = null;          // current view handle (destroy)
 let current = null;       // { source, spec }
 let busy = false;
+let lastFile = null;      // kept so a dashboard from an upload can be rebuilt (e.g. after editing metrics)
+let license = { valid: false, plan: PLANS.free };
+const licenseReady = verifyLicense(savedLicense()).then((r) => { license = r; return r; });
 
 // ---------------- theme ----------------
 const THEME_KEY = 'datasetless.theme';
@@ -53,7 +56,8 @@ const header = h('header', { class: 'site-head no-print' },
   h('nav', { class: 'nav' },
     h('a', { href: '#/', onclick: (e) => { e.preventDefault(); goHome('gallery'); } }, 'Gallery'),
     h('a', { href: '#/', onclick: (e) => { e.preventDefault(); goHome('business'); } }, 'Demos'),
-    h('a', { href: '#/', onclick: (e) => { e.preventDefault(); goHome('how'); } }, 'How it works')),
+    h('a', { href: '#/developers' }, 'For developers'),
+    h('a', { href: '#/pricing' }, 'Pricing')),
   h('div', { class: 'head-right' },
     BRAND.authorUrl ? h('a', { class: 'made-pill', href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, 'Made by ', h('b', {}, BRAND.author)) : h('span', { class: 'made-pill' }, 'Made by ', h('b', {}, BRAND.author)),
     aiBtn, themeBtn));
@@ -62,7 +66,9 @@ const siteFoot = h('footer', { class: 'site-foot no-print' },
   h('div', {}, h('span', { class: 'logo-small' }, logoMark(16), BRAND.product), ' — made with ♥ by ', BRAND.authorUrl ? h('a', { href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, BRAND.author) : h('b', {}, BRAND.author), '.'),
   h('div', { class: 'foot-links' },
     BRAND.githubUrl ? h('a', { href: BRAND.githubUrl, target: '_blank', rel: 'noopener' }, 'Source code') : null,
-    BRAND.contactUrl ? h('a', { href: BRAND.contactUrl, target: '_blank', rel: 'noopener' }, 'Hire me') : null,
+    h('a', { href: '#/developers' }, 'Developers'),
+    h('a', { href: '#/pricing' }, 'Pricing'),
+    BRAND.contactUrl ? h('a', { href: BRAND.contactUrl, target: '_blank', rel: 'noopener' }, 'Contact') : null,
     h('span', { class: 'muted' }, 'Public data: World Bank Open Data (CC BY 4.0) and the sources you link.')));
 app.replaceChildren(h('a', { class: 'skip', href: '#main' }, 'Skip to content'), header, main, siteFoot);
 
@@ -84,9 +90,23 @@ function goHome(anchor) {
   if (anchor) setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth' }), 60);
 }
 
+const pageCtx = () => ({
+  license, origin: location.origin + location.pathname.replace(/[^/]*$/, ''),
+  onLicense: activateLicense, openSample: (id) => openSource({ type: 'sample', id }),
+});
+
 async function route() {
   const hash = location.hash || '#/';
   let m;
+  if (hash === '#/pricing' || hash === '#/developers') {
+    current = null;
+    await licenseReady;
+    const render = hash === '#/pricing' ? renderPricing : renderDevelopers;
+    document.title = `${hash === '#/pricing' ? 'Pricing' : 'For developers'} · ${BRAND.product}`;
+    setView(render(main, pageCtx()));
+    window.scrollTo({ top: 0 });
+    return;
+  }
   if ((m = hash.match(/^#\/d\/(.+)$/))) {
     const payload = decodeShare(m[1]);
     if (!payload) { toast('That share link is broken or from a newer version.', 'error'); return goHome(); }
@@ -101,7 +121,7 @@ async function route() {
 window.addEventListener('popstate', route);
 
 function hashFor(source, extra = {}) {
-  if (source.type === 'sample' && !extra.asks?.length && !extra.hidden?.length && !extra.filters && !extra.title) return `#/sample/${source.id}`;
+  if (source.type === 'sample' && !extra.asks?.length && !extra.hidden?.length && !extra.filters && !extra.title && !extra.metrics) return `#/sample/${source.id}`;
   if (!isShareable(source)) return '#/local';
   if (source.type === 'paste' && source.text.length > LIMITS.maxShareChars) return '#/local';
   return '#/d/' + encodeShare({ source: stripSource(source), ...extra });
@@ -184,90 +204,25 @@ const SURPRISES = [
 let lastSurprise = null;
 
 // ---------------- core pipeline ----------------
-async function openSource(source, { initial = null, push = true, file = null } = {}) {
+async function openSource(source, { initial = null, push = true, file = null, metrics = undefined } = {}) {
   if (busy) return;
   busy = true;
   const t0 = performance.now();
   const L = showLoading(['Starting the query engine']);
   try {
-    await getDB();
-    let opts = {}, sourceInfo, planChip = null, questions = null;
-    if (source.type === 'worldbank') {
-      L.step('Fetching live data from the World Bank');
-      const wb = await loadWorldBank(source);
-      await loadObjects(wb.rows, wb.headers);
-      const names = source.countries.map((c) => COUNTRY_NAME[c] || c);
-      opts = {
-        title: source.title, exclude: ['Code'], keepOrder: true, panel: true, primaryDim: 'Country', currency: '$',
-        focus: COUNTRY_NAME[source.focus] || source.focus, colorOrder: names,
-        measureMeta: Object.fromEntries(wb.indicators.map((i) => [i.label, { format: i.format, additive: !!i.additive, source: i.code }])),
-      };
-      sourceInfo = {
-        kind: 'live', provider: 'World Bank', updated: wb.lastUpdated,
-        sourceText: `World Bank Open Data (CC BY 4.0): ${wb.indicators.map((i) => i.label).join(', ')}`,
-        url: `https://data.worldbank.org/indicator/${wb.indicators.map((i) => i.code).join(',')}?locations=${source.countries.map((c) => c).join('-')}`,
-      };
-      planChip = `${source.understood === false ? 'Couldn’t spot specific indicators, so here’s an overview. ' : ''}Showing ${wb.indicators.map((i) => i.label.replace(/\s*\(.*\)$/, '')).join(', ')} · ${names.join(', ')} · ${source.from}–${source.to}`;
-      if (wb.failed.length) toast(`No data for: ${wb.failed.map((f) => f.ind.label).join(', ')}`);
-      questions = [`Which country improved ${wb.indicators[0].label.replace(/\s*\(.*\)$/, '').toLowerCase()} the most since ${source.from}?`, `Rank countries by ${wb.indicators[wb.indicators.length > 1 ? 1 : 0].label.replace(/\s*\(.*\)$/, '').toLowerCase()} in the latest year`, `Average ${wb.indicators[0].label.replace(/\s*\(.*\)$/, '').toLowerCase()} by decade for each country`];
-    } else if (source.type === 'sample') {
-      const s = SAMPLE_BY_ID[source.id];
-      if (!s) throw new Error('Unknown sample.');
-      L.step('Generating realistic sample data');
-      const rows = s.generate();
-      await loadObjects(rows);
-      opts = { title: `${s.name} dashboard`, currency: s.currency, derived: s.derived, countLabel: s.countLabel, measureOrder: s.measureOrder, nonAdditive: s.nonAdditive };
-      sourceInfo = { kind: 'sample', sample: s, sourceText: 'Synthetic sample data generated in your browser (not real figures).' };
-      questions = s.questions;
-    } else if (source.type === 'link') {
-      const info = normaliseUrl(source.url);
-      L.step(`Reading ${info.label}`);
-      const got = await fetchLink(info);
-      let detail = '';
-      if (got.tables) {
-        let ti = source.table;
-        if (ti == null || !got.tables[ti]) {
-          ti = got.tables.length === 1 ? 0 : await pickTable(got.tables);
-          if (ti == null) throw new Error('cancelled');
-          source = { ...source, table: ti };
-        }
-        await loadTable(got.tables[ti].data);
-        detail = got.tables[ti].caption ? `Table: ${got.tables[ti].caption}` : `Table ${ti + 1}`;
-      } else {
-        const r = await loadBuffer(got.buffer, got.ext, { pickSheet });
-        detail = r.detail || '';
-      }
-      opts = { title: prettyTitle(info.label) };
-      sourceInfo = { kind: 'link', sourceText: info.label, url: info.original, detail };
-    } else if (source.type === 'paste') {
-      L.step('Reading your table');
-      await loadTable(parsePasted(source.text));
-      opts = { title: source.title || 'Pasted table' };
-      sourceInfo = { kind: 'paste', sourceText: 'A table you pasted (processed in your browser)' };
-    } else if (source.type === 'file') {
-      if (!file) throw new Error('Please upload the file again.');
-      L.step(`Reading ${file.name}`);
-      const r = await loadFile(file, { pickSheet });
-      opts = { title: prettyTitle(file.name.replace(/\.[^.]+$/, '')) };
-      sourceInfo = { kind: 'file', sourceText: `${file.name} (processed on this device, never uploaded)`, detail: r.detail };
-    } else {
-      throw new Error('Unknown source.');
-    }
+    if (file) lastFile = file;
+    await licenseReady;
+    const loaded = await loadSource(source, { step: L.step, file: file || lastFile, pickTable, pickSheet });
+    source = loaded.source;
+    const { opts, sourceInfo, planChip, questions } = loaded;
+    if (sourceInfo.failed?.length) toast(`No data for: ${sourceInfo.failed.map((f) => f.ind.label).join(', ')}`);
+    const contractIn = metrics !== undefined ? metrics : initial?.metrics || null;
+    const { profile, spec } = await buildModel(opts, { initial, metrics: contractIn, metricLimit: license.plan.metrics, step: L.step });
+    const defaultTitle = initial?.title ? null : spec.title;
+    current = { source, spec, profile, metrics: contractIn };
 
-    L.step('Profiling columns');
-    const profile = await profileTable();
-    if (!profile.columns.some((c) => ['measure', 'dim', 'time', 'year'].includes(c.kind))) throw new Error('Could not find any usable columns in that data.');
-    L.step('Designing the dashboard');
-    const spec = await buildSpec(profile, opts);
-    if (initial) {
-      if (initial.title) spec.title = String(initial.title).slice(0, 120);
-      if (Array.isArray(initial.hidden)) spec.hidden = initial.hidden.filter((x) => typeof x === 'string');
-      if (Array.isArray(initial.asks)) spec.asks = initial.asks.filter((a) => { try { guardSelect(a.sql); return true; } catch { return false; } }).slice(0, 12);
-    }
-    const defaultTitle = spec.title;
-    current = { source, spec };
-
-    const hash = hashFor(source, initial ? { title: initial.title, asks: spec.asks, hidden: spec.hidden, filters: initial.filters } : {});
+    const extra0 = initial || contractIn ? { title: initial?.title, asks: spec.asks.length ? spec.asks : undefined, hidden: spec.hidden.length ? spec.hidden : undefined, filters: initial?.filters, metrics: contractIn || undefined } : {};
+    const hash = hashFor(source, extra0);
     if (push) history.pushState(null, '', hash); else history.replaceState(null, '', hash);
 
     hideLoading();
@@ -275,7 +230,7 @@ async function openSource(source, { initial = null, push = true, file = null } =
     const onChange = () => {
       const st = handle?.getState?.() || {};
       const filters = (st.dimValues?.length || st.from || st.to) ? { dimValues: st.dimValues, from: st.from, to: st.to } : undefined;
-      const extra = { title: spec.title !== defaultTitle ? spec.title : undefined, asks: spec.asks.length ? spec.asks : undefined, hidden: spec.hidden.length ? spec.hidden : undefined, filters };
+      const extra = { title: spec.title !== defaultTitle ? spec.title : undefined, asks: spec.asks.length ? spec.asks : undefined, hidden: spec.hidden.length ? spec.hidden : undefined, filters, metrics: current?.metrics || undefined };
       history.replaceState(null, '', hashFor(source, extra));
     };
     setView({ destroy: () => handle?.destroy() });
@@ -287,10 +242,13 @@ async function openSource(source, { initial = null, push = true, file = null } =
       onSettings: () => openSettings(),
       onEditSource: source.type === 'worldbank' ? () => openWBEditor(source) : null,
       onShare: () => share(source),
+      onMetrics: () => openMetricsEditor(),
+      onEmbed: () => openEmbedCode(source),
       onChange,
     });
+    current.handle = handle;
     window.scrollTo({ top: 0 });
-    if (push && !initial) confetti();
+    if (push && !initial && metrics === undefined) confetti();
   } catch (e) {
     hideLoading();
     if (e.message !== 'cancelled') {
@@ -305,9 +263,83 @@ async function openSource(source, { initial = null, push = true, file = null } =
   }
 }
 
-function prettyTitle(s) {
-  const t = String(s).replace(/^(Wikipedia|GitHub|Our World in Data):\s*/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Your dashboard';
+// ---------------- metrics contract editor ----------------
+function openMetricsEditor() {
+  if (!current) return;
+  const { spec, profile, source } = current;
+  const startObj = current.metrics || starterContract(profile, spec);
+  const ta = h('textarea', { class: 'input code-area', rows: 18, spellcheck: 'false', 'aria-label': 'metrics.json' }, JSON.stringify(startObj, null, 2));
+  const cols = h('p', { class: 'muted small' }, 'Columns: ', profile.columns.map((c) => c.name).join(', '));
+  const limitNote = license.plan.metrics === Infinity ? null
+    : h('p', { class: 'note-pill' }, icon('info', 14), ` Free plan: up to ${FREE_METRIC_LIMIT} metrics. `, h('a', { href: '#/pricing' }, 'Pro is unlimited.'));
+  modal({
+    title: 'Metrics contract (metrics.json)', wide: true,
+    body: h('div', { class: 'stack' },
+      h('p', { class: 'small' }, 'Define your official numbers once. Every KPI, chart and AI answer uses exactly these definitions, and each metric is tested against the data. Companies keep this file in their own code repository.'),
+      ta, cols, limitNote,
+      h('details', { class: 'mini-docs' }, h('summary', {}, 'Test types'),
+        h('ul', { class: 'small' },
+          h('li', {}, h('code', {}, '{"type":"min","value":0}'), ' / ', h('code', {}, 'max'), ' / ', h('code', {}, '{"type":"between","value":[0,100]}'), ' — checked for every period'),
+          h('li', {}, h('code', {}, '{"type":"not_null","column":"amount"}'), ', ', h('code', {}, 'unique'), ', ', h('code', {}, 'no_gaps')),
+          h('li', {}, h('code', {}, '{"type":"assert","sql":"count(*) FILTER (WHERE amount < 0) = 0"}'))))),
+    actions: [
+      current.metrics ? { label: 'Remove contract', onClick: (c) => { c(); openSource(source, { initial: { title: spec.title }, push: false, metrics: null }); } } : null,
+      { label: 'Download metrics.json', onClick: () => downloadText(ta.value, 'metrics.json') },
+      { label: 'Apply & verify', primary: true, onClick: (c) => {
+        const { contract, errors } = parseContract(ta.value);
+        if (!contract) return toast(errors[0], 'error', 7000);
+        if (errors.length) toast(errors.slice(0, 2).join(' · '), 'error', 7000);
+        c();
+        openSource(source, { initial: { title: spec.title !== startObj.title ? spec.title : undefined }, push: false, metrics: JSON.parse(ta.value) });
+      } },
+    ].filter(Boolean),
+  });
+}
+
+function downloadText(text, name) {
+  const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'application/json' })), download: name });
+  document.body.append(a); a.click(); a.remove();
+}
+
+// ---------------- embed code for the current dashboard ----------------
+function openEmbedCode(source) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const shareable = isShareable(source) && !(source.type === 'paste' && source.text.length > LIMITS.maxShareChars);
+  if (!shareable) {
+    modal({
+      title: 'Embed this dashboard',
+      body: h('div', { class: 'stack' },
+        h('p', {}, 'This dashboard uses a file from your device, which never leaves your browser, so it can’t be embedded from a link.'),
+        h('p', {}, 'To put dashboards like this inside your own product with live data, connect your data source in a few lines.'),
+        h('a', { class: 'btn btn-primary', href: '#/developers' }, 'See how to integrate', icon('arrow', 16))),
+    });
+    return;
+  }
+  const code = location.hash.startsWith('#/d/') ? location.hash.slice(4) : encodeShare({ source: stripSource(source) });
+  const iframe = `<iframe src="${base}embed.html#/d/${code}" width="100%" height="900" style="border:0;border-radius:16px" loading="lazy" title="Dashboard"></iframe>`;
+  const wc = `<script src="${base}embed.js" async></script>\n<datasetless-dashboard share="${code}"></datasetless-dashboard>`;
+  const box = (label, text) => {
+    const pre = h('pre', { class: 'code' }, text);
+    return h('div', { class: 'stack' }, h('div', { class: 'code-head' }, h('b', {}, label), h('button', { class: 'btn btn-ghost btn-sm', onclick: () => navigator.clipboard?.writeText(text).then(() => toast('Copied.', 'success')).catch(() => toast('Select the code and copy it.')) }, 'Copy')), pre);
+  };
+  modal({
+    title: 'Embed this dashboard', wide: true,
+    body: h('div', { class: 'stack' },
+      h('p', { class: 'small' }, 'Paste into any website, CMS (WordPress, Webflow, Notion, SharePoint) or app. Data is loaded live in each viewer’s browser.'),
+      box('Any website or no-code tool (iframe)', iframe),
+      box('Web component (auto-resizes, emits events)', wc),
+      license.plan.whiteLabel ? null : h('p', { class: 'note-pill' }, icon('info', 14), ' Free embeds show a small “Powered by Datasetless” badge. ', h('a', { href: '#/pricing' }, 'Pro removes it.'))),
+  });
+}
+
+// ---------------- license ----------------
+async function activateLicense(key) {
+  const r = await verifyLicense(key);
+  if (!r.valid) { toast(r.reason || 'That key is not valid.', 'error', 7000); return r; }
+  saveLicense(key);
+  license = r;
+  toast(`${r.plan.name} plan active${r.org ? ` for ${r.org}` : ''}.`, 'success');
+  return r;
 }
 
 async function pickTable(tables) {

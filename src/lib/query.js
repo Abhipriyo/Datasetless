@@ -56,7 +56,8 @@ export function chartSQL(spec, chart, state) {
       const ms = chart.measures.map((id) => measureById(spec, id)).filter(Boolean);
       const sel = ms.map((m) => {
         if (chart.latest && T && m.col) return `arg_max(${q(m.col)}, ${T}) FILTER (WHERE ${q(m.col)} IS NOT NULL) AS ${q(m.label)}`;
-        if (m.stock && T) return `sum(${q(m.col)}) FILTER (WHERE ${T} = (SELECT max(${T}) FROM base)) AS ${q(m.label)}`;
+        if (m.stock && T && m.col) return `sum(${q(m.col)}) FILTER (WHERE ${T} = (SELECT max(${T}) FROM base)) AS ${q(m.label)}`;
+        if (m.stock && T && /^\s*\w+\s*\([^()]*\)\s*$/.test(m.expr)) return `${m.expr} FILTER (WHERE ${T} = (SELECT max(${T}) FROM base)) AS ${q(m.label)}`;
         return `${m.expr} AS ${q(m.label)}`;
       });
       return `WITH ${base}\nSELECT CAST(${d} AS VARCHAR) AS ${q(chart.dim)}, ${sel.join(',\n  ')}\nFROM base\nWHERE ${d} IS NOT NULL\nGROUP BY 1\nORDER BY 2 DESC NULLS LAST\nLIMIT 25`;

@@ -131,7 +131,18 @@ export function renderLanding(root, act) {
       h('p', {}, `${BRAND.author} builds custom dashboards and data tools connected to your Shopify, database, POS or ads accounts — updating automatically, with logins and scheduled reports.`)),
     h('a', { class: 'btn btn-primary btn-lg', href: BRAND.contactUrl, target: '_blank', rel: 'noopener' }, `Work with ${BRAND.author}`, icon('arrow', 18))) : null;
 
-  root.replaceChildren(h('div', { class: 'landing' }, hero, ticker, ways, business, gallery, how, cta));
+  const biz = h('section', { class: 'section', id: 'for-business' },
+    sectionHead('For businesses', 'Put it inside your product', 'Give your customers dashboards on their own data, in your app, with one HTML tag. Works with any stack, no-code tool or mobile app.'),
+    h('div', { class: 'steps' },
+      step('🔐', 't-mint', 'Your data never leaves', 'Your API sends each customer their own rows; the engine runs in their browser. We never see it, so security reviews stay short.'),
+      step('✅', 't-sun', 'Numbers you can trust', 'Define metrics once in metrics.json. Every chart and AI answer uses them, and each one is tested and marked Verified.'),
+      step('🧩', 't-sky', 'Any stack, one tag', 'React, Vue, Angular, plain HTML, WordPress, Salesforce, iOS or Android. Flat pricing, unlimited viewers.')),
+    h('div', { class: 'hero-row biz-cta' },
+      h('a', { class: 'btn btn-primary btn-lg', href: 'demo/acme.html', target: '_blank' }, 'See it inside a demo app', icon('arrow', 18)),
+      h('a', { class: 'btn btn-lg', href: '#/developers' }, 'Integration guide'),
+      h('a', { class: 'btn btn-lg btn-ghost', href: '#/pricing' }, 'Pricing')));
+
+  root.replaceChildren(h('div', { class: 'landing' }, hero, ticker, ways, business, gallery, biz, how, cta));
   setTimeout(() => input.focus({ preventScroll: true }), 50);
   return { destroy: () => timers.forEach(clearInterval) };
 }

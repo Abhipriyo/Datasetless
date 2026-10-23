@@ -48,7 +48,8 @@ export async function buildSpec(profile, opts = {}) {
   const cols = columns.filter((c) => !(opts.exclude || []).includes(c.name));
 
   // Time: prefer real dates, then year columns.
-  const timeCol = cols.find((c) => c.kind === 'time' && c.nonNull > n * 0.5) || cols.find((c) => c.kind === 'year');
+  const forced = opts.timeCol ? cols.find((c) => c.name === opts.timeCol && ['time', 'year'].includes(c.kind)) : null;
+  const timeCol = forced || cols.find((c) => c.kind === 'time' && c.nonNull > n * 0.5) || cols.find((c) => c.kind === 'year');
   let time = null;
   if (timeCol) {
     time = { col: timeCol.name, kind: timeCol.kind === 'year' ? 'year' : 'date' };
@@ -65,7 +66,7 @@ export async function buildSpec(profile, opts = {}) {
   }
   measureCols = measureCols.slice(0, 8);
   const currency = opts.currency ?? (measureCols.some((c) => /\$|usd/i.test(c.name)) ? '$' : measureCols.some((c) => /₹|inr|rs\.?\b|rupee/i.test(c.name)) ? '₹' : null);
-  const measures = measureCols.map((c, i) => {
+  let measures = measureCols.map((c, i) => {
     const o = meta[c.name] || {};
     const additive = o.additive ?? !RATE.test(c.name);
     const stock = (opts.nonAdditive || []).includes(c.name);
@@ -78,12 +79,16 @@ export async function buildSpec(profile, opts = {}) {
   });
   (opts.derived || []).forEach((d, i) => measures.push({ id: `d${i}`, label: d.label, expr: d.expr, format: d.format, additive: false, derived: true }));
   if (opts.countLabel) measures.push({ id: 'count', label: opts.countLabel, expr: 'count(*)', format: 'integer', additive: true, isCount: true });
+  // A metrics contract replaces guessed measures with the company's own definitions.
+  if (opts.contractMeasures?.length) measures = opts.contractMeasures.map((m) => ({ ...m }));
   if (!measures.length) measures.push({ id: 'count', label: 'Rows', expr: 'count(*)', format: 'integer', additive: true, isCount: true });
 
   // Dimensions
-  const dims = cols.filter((c) => c.kind === 'dim' && c.distinct >= 2)
-    .sort((a, b) => dimScore(b, n) - dimScore(a, n))
-    .map((c) => ({ col: c.name, distinct: c.distinct }));
+  const dims = opts.dimsAllow?.length
+    ? opts.dimsAllow.map((name) => cols.find((c) => c.name === name)).filter((c) => c && c.distinct >= 2).map((c) => ({ col: c.name, distinct: c.distinct }))
+    : cols.filter((c) => c.kind === 'dim' && c.distinct >= 2)
+      .sort((a, b) => dimScore(b, n) - dimScore(a, n))
+      .map((c) => ({ col: c.name, distinct: c.distinct }));
   if (opts.primaryDim) {
     const i = dims.findIndex((d) => d.col === opts.primaryDim);
     if (i > 0) dims.unshift(dims.splice(i, 1)[0]);
@@ -122,7 +127,7 @@ export async function buildSpec(profile, opts = {}) {
   // A derived metric (e.g. ROAS, return rate) by primary dimension is usually the sharpest insight.
   const d0 = measures.find((m) => m.derived);
   if (d0 && dim) charts.push({ id: 'c-derived', kind: 'rank', measure: d0.id, dim: dim.col, latest: false });
-  const others = (panel ? base.slice(1) : base.slice(1, 3));
+  const others = panel ? base.slice(1) : base.slice(1, opts.contractMeasures ? 5 : 3);
   for (const m of others) {
     if (time && panel && splitOk) charts.push({ id: `c-${m.id}`, kind: 'trendSplit', measure: m.id, dim: dim.col, top: 8 });
     else if (time) charts.push({ id: `c-${m.id}`, kind: 'trend', measure: m.id });
@@ -140,7 +145,7 @@ export async function buildSpec(profile, opts = {}) {
   if (dim) charts.push({ id: 'c-table', kind: 'table', dim: dim.col, measures: measures.slice(0, 6).map((m) => m.id), latest: panel, wide: true });
 
   // KPIs: the main measures, then derived metrics, then the record count.
-  const kpiPool = panel ? base : [...measures.filter((m) => !m.derived && !m.isCount).slice(0, 2), ...measures.filter((m) => m.derived), ...measures.filter((m) => m.isCount)];
+  const kpiPool = panel || opts.contractMeasures ? base : [...measures.filter((m) => !m.derived && !m.isCount).slice(0, 2), ...measures.filter((m) => m.derived), ...measures.filter((m) => m.isCount)];
   const kpis = kpiPool.slice(0, 4).map((m) => m.id);
 
   return {

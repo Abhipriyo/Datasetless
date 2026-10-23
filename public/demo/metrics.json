@@ -1,0 +1,44 @@
+{
+  "title": "Store performance",
+  "currency": "$",
+  "time": "date",
+  "grain": "month",
+  "dimensions": ["region", "product_line", "channel"],
+  "metrics": [
+    {
+      "id": "net_revenue", "label": "Net revenue", "format": "currency",
+      "sql": "sum(revenue) - sum(refunds)",
+      "description": "Gross order revenue minus refunds issued in the same period.",
+      "owner": "finance@acme-commerce.com",
+      "tests": [{ "type": "min", "value": 0 }, { "type": "not_null", "column": "revenue" }]
+    },
+    {
+      "id": "orders", "label": "Orders", "format": "integer",
+      "sql": "sum(orders)",
+      "description": "Completed orders (cancelled orders are excluded upstream).",
+      "owner": "ops@acme-commerce.com",
+      "tests": [{ "type": "min", "value": 0 }, { "type": "no_gaps" }]
+    },
+    {
+      "id": "aov", "label": "Average order value", "format": "currency",
+      "sql": "(sum(revenue) - sum(refunds)) / nullif(sum(orders), 0)",
+      "description": "Net revenue divided by orders.",
+      "owner": "finance@acme-commerce.com",
+      "tests": [{ "type": "between", "value": [5, 2000] }]
+    },
+    {
+      "id": "refund_rate", "label": "Refund rate", "format": "percent",
+      "sql": "100.0 * sum(refunds) / nullif(sum(revenue), 0)",
+      "description": "Share of revenue refunded. Above 15% means something is wrong.",
+      "owner": "support@acme-commerce.com",
+      "tests": [{ "type": "between", "value": [0, 15] }]
+    },
+    {
+      "id": "new_customers", "label": "New customers", "format": "integer",
+      "sql": "sum(new_customers)",
+      "description": "First-time buyers.",
+      "owner": "growth@acme-commerce.com",
+      "tests": [{ "type": "min", "value": 0 }]
+    }
+  ]
+}

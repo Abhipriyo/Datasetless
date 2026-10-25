@@ -43,11 +43,17 @@ There's no pricing page. The **Work with me** page (`#/contact`) turns interest 
 
 Calls to action across the site, the demo app and the embed dialog all lead there. To set it up:
 
+**Messages go to abhipriyo.scholasticsolutions@gmail.com by default.** The form sends them through [FormSubmit](https://formsubmit.co), so you don't need an account or a server.
+
+> **One-time step after you deploy:** send yourself a test message from the live site. FormSubmit then emails you an **activation link**. Click it, and every message after that lands in your inbox. Until you do, the form offers visitors an "email instead" link, so no enquiry is lost.
+
+Your phone number is deliberately **not** stored anywhere in the site or code. Companies who prefer a call can leave their own number in the optional "Phone or WhatsApp" field, and you call them back.
+
 | Variable | What it does |
 |---|---|
-| `VITE_FORM_ENDPOINT` | A [Formspree](https://formspree.io) form URL. Messages arrive in your inbox, and the visitor sees a thank-you. |
-| `VITE_CONTACT_EMAIL` | Used if no form URL is set: the form opens a pre-filled email to you. |
-| `VITE_CONTACT_URL` | A Cal.com or Calendly link that adds a "Book a call" button. |
+| `VITE_CONTACT_EMAIL` | Where enquiries go. Defaults to the address above. |
+| `VITE_FORM_ENDPOINT` | Optional: use Formspree or another form service instead of FormSubmit. |
+| `VITE_CONTACT_URL` | Optional: a Cal.com or Calendly link that adds a "Book a call" button. |
 | `VITE_AUTHOR_URL` | Your portfolio or LinkedIn. Makes "Made by Abhipriyo" a link. |
 
 ## Embedding in other software

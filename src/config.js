@@ -20,12 +20,16 @@ export const LIMITS = {
 };
 
 // How companies reach you from the "Work with me" page.
-//  - VITE_FORM_ENDPOINT: a Formspree (or similar) form URL. Messages arrive in your inbox.
-//  - VITE_CONTACT_EMAIL: used for a pre-filled email when no form endpoint is set.
+//  - VITE_CONTACT_EMAIL: where enquiries go. By default the form delivers them to this
+//    address through FormSubmit (no account needed; confirm the one-time activation email).
+//  - VITE_FORM_ENDPOINT: optional, to use Formspree or another form service instead.
+// Your phone number is deliberately NOT stored anywhere in the site. Visitors can leave
+// theirs in the form if they prefer a call back.
 //  - VITE_CONTACT_URL (above): a Cal.com / Calendly link for "Book a call".
+const CONTACT_EMAIL = env.VITE_CONTACT_EMAIL || 'abhipriyo.scholasticsolutions@gmail.com';
 export const CONTACT = {
-  email: env.VITE_CONTACT_EMAIL || '',
-  formEndpoint: env.VITE_FORM_ENDPOINT || '',
+  email: CONTACT_EMAIL,
+  formEndpoint: env.VITE_FORM_ENDPOINT || (CONTACT_EMAIL ? `https://formsubmit.co/ajax/${CONTACT_EMAIL}` : ''),
 };
 
 // Public address of this deployment, used in "Powered by" links from embeds.

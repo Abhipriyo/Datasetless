@@ -788,3 +788,4 @@ html.embedded .dash-title { font-size: clamp(22px, 3vw, 30px); }
   .offers { grid-template-columns: 1fr; }
   .head-cta { display: none; }
 }
+.email-line { margin-top: 14px; color: var(--text-2); overflow-wrap: anywhere; }

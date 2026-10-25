@@ -68,6 +68,7 @@ export function renderContact(root, ctx) {
   const email = h('input', { class: 'input', name: 'email', type: 'email', required: true, autocomplete: 'email' });
   const company = h('input', { class: 'input', name: 'company', required: true, autocomplete: 'organization' });
   const site = h('input', { class: 'input', name: 'website', type: 'text', placeholder: 'yourcompany.com', autocomplete: 'url' });
+  const phone = h('input', { class: 'input', name: 'phone', type: 'tel', placeholder: '+1 555 010 0199', autocomplete: 'tel' });
   const trap = h('input', { class: 'trap', name: 'company_url', tabindex: '-1', autocomplete: 'off', 'aria-hidden': 'true' });
   const needs = ['Dashboards inside our product', 'Internal dashboards for our team', 'Ask-your-data for our team', 'Something else'];
   const picks = h('div', { class: 'pick-row' }, needs.map((n) => {
@@ -81,6 +82,7 @@ export function renderContact(root, ctx) {
     h('div', { class: 'row2' }, field('Your name', name), field('Work email', email)),
     h('div', { class: 'row2' }, field('Company', company), field('Website (optional)', site)),
     h('div', { class: 'field' }, h('span', {}, 'What are you looking for?'), picks),
+    field('Phone or WhatsApp (optional)', phone, 'Prefer a call? Leave your number and I’ll call you back.'),
     field('Tell me a bit more', msg),
     trap,
     h('div', { class: 'form-actions' }, send, BRAND.contactUrl ? h('a', { class: 'btn btn-lg', href: BRAND.contactUrl, target: '_blank', rel: 'noopener' }, 'Or book a call') : null),
@@ -91,7 +93,7 @@ export function renderContact(root, ctx) {
     e.preventDefault();
     if (trap.value) return; // bots fill hidden fields
     const data = {
-      name: name.value.trim(), email: email.value.trim(), company: company.value.trim(), website: site.value.trim(),
+      name: name.value.trim(), email: email.value.trim(), company: company.value.trim(), website: site.value.trim(), phone: phone.value.trim(),
       interest: [...picks.querySelectorAll('input:checked')].map((c) => c.value).join(', '), message: msg.value.trim(),
       source: `Datasetless (${location.host})`,
     };
@@ -100,33 +102,47 @@ export function renderContact(root, ctx) {
       note.textContent = 'Please add your name, a valid work email and your company.';
       return;
     }
+    if (data.phone && !/^\+?[\d\s\-().]{7,20}$/.test(data.phone)) {
+      note.className = 'small form-note bad';
+      note.textContent = 'That phone number doesn’t look right. Include the country code, e.g. +1 555 010 0199.';
+      return;
+    }
     const done = () => formBox.replaceChildren(h('div', { class: 'sent' },
       h('div', { class: 'sent-emoji', 'aria-hidden': 'true' }, '🎉'),
       h('h3', {}, `Thanks, ${data.name.split(' ')[0]}!`),
-      h('p', {}, `I’ll get back to you at ${data.email} soon to set up a short call.`),
+      h('p', {}, data.phone ? `I’ll call you on ${data.phone} or email ${data.email} soon to set up a short chat.` : `I’ll get back to you at ${data.email} soon to set up a short call.`),
       h('p', { class: 'muted' }, `— ${BRAND.author}`)));
     if (CONTACT.formEndpoint) {
       send.disabled = true; note.className = 'small form-note'; note.textContent = 'Sending…';
       try {
-        const r = await fetch(CONTACT.formEndpoint, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ ...data, _subject: `Datasetless enquiry from ${data.company}` }) });
-        if (!r.ok) throw new Error(String(r.status));
+        const r = await fetch(CONTACT.formEndpoint, {
+          method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ ...data, _subject: `Datasetless enquiry from ${data.company}`, _template: 'table', _captcha: 'false', _replyto: data.email }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.success === false || j.success === 'false') throw new Error(j.message || String(r.status));
         done();
-      } catch {
+      } catch (err) {
+        console.warn('Form delivery failed:', err.message);
         send.disabled = false;
         note.className = 'small form-note bad';
-        note.textContent = CONTACT.email ? `That didn’t send. Please email ${CONTACT.email} instead.` : 'That didn’t send. Please try again in a moment.';
+        note.replaceChildren('That didn’t send. ', CONTACT.email ? h('a', { href: mailtoFor(data) }, 'Send it by email instead') : 'Please try again in a moment.', '.');
       }
       return;
     }
     if (CONTACT.email) {
-      const body = `Hi ${BRAND.author},\n\n${data.message || 'I’d like to talk about using Datasetless at our company.'}\n\nLooking for: ${data.interest || '—'}\n\n${data.name}\n${data.company}${data.website ? ` · ${data.website}` : ''}\n${data.email}`;
-      location.href = `mailto:${CONTACT.email}?subject=${encodeURIComponent(`Datasetless for ${data.company}`)}&body=${encodeURIComponent(body)}`;
+      location.href = mailtoFor(data);
       done();
       return;
     }
     note.className = 'small form-note bad';
     note.textContent = BRAND.contactUrl ? 'Messages aren’t switched on yet. Please use “Book a call”.' : 'Contact details haven’t been set up for this site yet.';
   });
+
+  function mailtoFor(d) {
+    const body = `Hi ${BRAND.author},\n\n${d.message || 'I’d like to talk about using Datasetless at our company.'}\n\nLooking for: ${d.interest || '—'}\n\n${d.name}\n${d.company}${d.website ? ` · ${d.website}` : ''}\n${d.email}${d.phone ? `\n${d.phone}` : ''}`;
+    return `mailto:${CONTACT.email}?subject=${encodeURIComponent(`Datasetless for ${d.company}`)}&body=${encodeURIComponent(body)}`;
+  }
 
   const contact = h('section', { class: 'section contact', id: 'contact-form' },
     h('div', { class: 'contact-grid' },
@@ -136,6 +152,7 @@ export function renderContact(root, ctx) {
         h('p', {}, 'A few lines about your data and what you’d like to see is enough. I read every message myself.'),
         h('ul', { class: 'plan-list' },
           ['Free first call, no obligation', 'A clear, fixed quote after we talk', 'Your data stays with you throughout'].map((x) => h('li', {}, icon('check', 15), h('span', {}, x)))),
+        CONTACT.email ? h('p', { class: 'small email-line' }, 'Prefer email? ', h('a', { href: `mailto:${CONTACT.email}?subject=${encodeURIComponent('Datasetless enquiry')}` }, CONTACT.email)) : null,
         h('div', { class: 'me-card' }, h('div', { class: 'me-avatar', 'aria-hidden': 'true' }, BRAND.author.slice(0, 1)),
           h('div', {}, h('b', {}, BRAND.author), h('span', { class: 'muted small' }, 'Builder of Datasetless'),
             BRAND.authorUrl ? h('a', { class: 'small', href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, 'Portfolio') : null))),

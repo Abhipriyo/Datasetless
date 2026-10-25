@@ -9,6 +9,7 @@ import { fmt, fmtPeriod, pctChange, plural } from '../lib/format.js';
 import { runChecks } from '../lib/checks.js';
 import { guardSelect } from '../lib/sqlguard.js';
 import { getAI, askSQL, explainResult } from '../lib/llm.js';
+import { answerQuestion, exampleQuestions } from '../lib/ask.js';
 import { toCSV } from '../lib/parse.js';
 import { BRAND } from '../config.js';
 
@@ -471,7 +472,9 @@ export async function renderDashboard(root, ctx) {
     }
     if (series.length === 1 && !isTime) {
       const lim = rows.slice(0, 25);
-      setChart(c.id, card, barOption({ labels: lim.map((r) => String(r[ch.x])), values: lim.map((r) => r[ys[0]]), format, currency: cur, color: t.single, highlightIndex: 0 }));
+      const vals = lim.map((r) => r[ys[0]]);
+      const hi = ch.highlight === 'max' ? vals.indexOf(Math.max(...vals.filter((v) => v != null))) : 0;
+      setChart(c.id, card, barOption({ labels: lim.map((r) => String(r[ch.x])), values: vals, format, currency: cur, color: t.single, highlightIndex: hi }));
       return setHeight(card, Math.max(180, lim.length * 34 + 30));
     }
     if (series.length === 1) return setChart(c.id, card, columnOption({ labels: xs.map(String), values: series[0].data, format, currency: cur, color: t.single, xLabelFormatter: (v) => fmtPeriod(v, grainGuess, true) }));
@@ -496,8 +499,8 @@ export async function renderDashboard(root, ctx) {
   // ---------- ask panel ----------
   function buildAskPanel() {
     const ai = getAI();
-    const showAsk = embed ? !!(embed.ask && ai) : true;
-    const showSql = embed ? !!embed.sql : true;
+    const showAsk = true;                       // the built-in engine answers without any AI key
+    const showSql = embed ? !!embed.sql : false;
     if (!showAsk && !showSql) return null;
     const input = h('input', { class: 'input ask-input', type: 'text', placeholder: suggestions()[0] ? `e.g. ${suggestions()[0]}` : 'Ask a question about this data', 'aria-label': 'Ask a question about this data' });
     const status = h('div', { class: 'ask-status', 'aria-live': 'polite' });
@@ -508,7 +511,8 @@ export async function renderDashboard(root, ctx) {
     const askPane = h('div', { class: 'pane' },
       h('form', { class: 'ask-row', onsubmit: (e) => { e.preventDefault(); ask(input.value); } }, input, go),
       h('div', { class: 'suggestions' }, suggestions().map((s) => h('button', { type: 'button', class: 'chip-btn', onclick: () => { input.value = s; ask(s); } }, s))),
-      !ai && !embed ? h('p', { class: 'hint' }, icon('lock', 13), ' Asking in plain English uses your own AI key (stored only in this browser). ', h('button', { class: 'link-btn', onclick: () => ctx.onSettings?.() }, 'Add a key'), ' — or use the SQL tab, which needs no key.') : null);
+      h('p', { class: 'hint' }, icon('lock', 13), ' Answers are worked out from this data, in your browser. Each one shows the SQL behind it.'));
+    void ai;
     const sqlPane = h('div', { class: 'pane', hidden: true },
       h('form', { class: 'sql-row', onsubmit: (e) => { e.preventDefault(); runUserSQL(sqlInput.value); } }, sqlInput, h('div', { class: 'sql-side' }, runSql, h('p', { class: 'hint' }, 'Table name: ', h('code', {}, 'data'), '. Read-only, runs in your browser.'))));
     const tabBtn = (label, pane, other, ic) => {
@@ -526,31 +530,28 @@ export async function renderDashboard(root, ctx) {
     async function ask(question) {
       question = String(question || '').trim();
       if (!question) return input.focus();
-      if (!getAI()) { ctx.onSettings?.(); return; }
       go.disabled = true;
-      const step = (s) => { status.replaceChildren(h('span', { class: 'spinner' }), s); };
+      const step = (txt) => { status.replaceChildren(h('span', { class: 'spinner' }), txt); };
       try {
-        step('Writing the SQL…');
-        const sample = (await query('SELECT * FROM main.data USING SAMPLE 5 ROWS')).map(trimRow);
-        let plan = await askSQL({ question, spec, profile, sample });
-        let rows;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            step(attempt ? 'Fixing the SQL…' : 'Running it on your data…');
-            const safe = guardSelect(plan.sql);
-            rows = await query(wrapAskSQL(safe, spec, state));
-            plan.sql = safe;
-            break;
-          } catch (e) {
-            if (attempt) throw e;
-            plan = await askSQL({ question, spec, profile, sample, error: e.message, previous: plan.sql });
-          }
+        step('Working it out…');
+        let card = null;
+        // 1) Built-in engine: instant, private, no key.
+        const ans = await answerQuestion(question, spec);
+        if (ans) {
+          const safe = guardSelect(ans.sql);
+          const rows = await query(wrapAskSQL(safe, spec, state));
+          card = { question, title: ans.title, sql: safe, chart: ans.chart, format: ans.format, explanation: ans.explain(rows) };
+        } else if (getAI()) {
+          // 2) Open-ended questions go to AI, when the site owner has switched it on.
+          card = await askWithAI(question, step);
         }
-        step('Explaining the result…');
-        let explanation = '';
-        try { explanation = await explainResult({ question, title: plan.title, rows }); } catch (e) { console.warn(e); }
-        spec.asks.unshift({ question, title: plan.title, sql: plan.sql, chart: plan.chart, format: plan.format, explanation });
-        for (const [id, card] of cards) if (id.startsWith('ask-')) { instances.get(id)?.dispose(); instances.delete(id); card.el.remove(); cards.delete(id); }
+        if (!card) {
+          status.replaceChildren(h('span', { class: 'error-text' }, icon('info', 14), ` I couldn't match that to this data. Try asking about ${spec.measures.slice(0, 3).map((m) => m.label).join(', ')}${spec.dim ? ` by ${spec.dim.replace(/_/g, ' ')}` : ''} — for example: `),
+            h('button', { class: 'link-btn', onclick: () => { input.value = suggestions()[0]; ask(suggestions()[0]); } }, suggestions()[0]));
+          return;
+        }
+        spec.asks.unshift(card);
+        for (const [id, c] of cards) if (id.startsWith('ask-')) { instances.get(id)?.dispose(); instances.delete(id); c.el.remove(); cards.delete(id); }
         status.replaceChildren();
         input.value = '';
         ctx.onChange?.();
@@ -560,6 +561,27 @@ export async function renderDashboard(root, ctx) {
         console.error(e);
         status.replaceChildren(h('span', { class: 'error-text' }, icon('alert', 14), ' ', e.message));
       } finally { go.disabled = false; }
+    }
+
+    async function askWithAI(question, step) {
+      step('Thinking about it…');
+      const sample = (await query('SELECT * FROM main.data USING SAMPLE 5 ROWS')).map(trimRow);
+      let plan = await askSQL({ question, spec, profile, sample });
+      let rows;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const safe = guardSelect(plan.sql);
+          rows = await query(wrapAskSQL(safe, spec, state));
+          plan.sql = safe;
+          break;
+        } catch (e) {
+          if (attempt) throw e;
+          plan = await askSQL({ question, spec, profile, sample, error: e.message, previous: plan.sql });
+        }
+      }
+      let explanation = '';
+      try { explanation = await explainResult({ question, title: plan.title, rows }); } catch (e) { console.warn(e); }
+      return { question, title: plan.title, sql: plan.sql, chart: plan.chart, format: plan.format, explanation };
     }
 
     async function runUserSQL(sql) {
@@ -619,6 +641,8 @@ export async function renderDashboard(root, ctx) {
 
   function suggestions() {
     if (ctx.questions?.length) return ctx.questions;
+    const ex = exampleQuestions(spec);
+    if (ex.length) return ex;
     const m0 = spec.measures[0], m1 = spec.measures[1];
     const out = [];
     if (spec.dim) out.push(`Which ${spec.dim.toLowerCase()} has the highest ${m0.label.toLowerCase()}?`);

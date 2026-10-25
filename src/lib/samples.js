@@ -160,7 +160,7 @@ export const SAMPLES = [
       { label: 'CTR (%)', expr: '100.0 * sum("Clicks") / nullif(sum("Impressions"), 0)', format: 'percent' },
       { label: 'Cost per conversion', expr: 'sum("Spend") / nullif(sum("Conversions"), 0)', format: 'currency' },
     ],
-    questions: ['Which platform has the best ROAS?', 'Is any client’s performance dropping?', 'Where should we move budget?'],
+    questions: ['Which platform has the best ROAS?', 'Is any client’s performance dropping?', 'Which platform has the lowest cost per conversion?'],
     export: 'Google Ads: Reports → Download → CSV. Meta Ads Manager: Reports → Export table data.',
   },
 ];

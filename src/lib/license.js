@@ -4,7 +4,7 @@
 import { LICENSE_PUBLIC_KEY } from '../license-key.js';
 
 export const PLANS = {
-  free: { id: 'free', name: 'Free', whiteLabel: false, ai: false, customTheme: false, metrics: 5 },
+  free: { id: 'free', name: 'Free', whiteLabel: false, ai: false, customTheme: false, metrics: Infinity },
   pro: { id: 'pro', name: 'Pro', whiteLabel: true, ai: true, customTheme: true, metrics: Infinity },
   business: { id: 'business', name: 'Business', whiteLabel: true, ai: true, customTheme: true, metrics: Infinity, selfHost: true },
 };

@@ -42,9 +42,9 @@ app.get('/api/reports/data', requireAuth, async (req, res) => {
 | `format` | `csv`, `json`, `parquet` or `xlsx` (detected automatically if omitted) |
 | `title` | Dashboard title |
 | `theme` | `light`, `dark` or `auto` |
-| `accent` | Brand colour, e.g. `#4f46e5` (Pro) |
-| `license` | License key (Pro / Business) |
-| `ai-endpoint` | Your AI route (Pro). Receives `{ system, user }` and returns `{ text }` |
+| `accent` | Brand colour, e.g. `#4f46e5` (with a license key) |
+| `license` | License key (provided with a white-label setup) |
+| `ai-endpoint` | Your AI route (optional). Receives `{ system, user }` and returns `{ text }` |
 | `sql` | Show a read-only SQL tab |
 | `exports` | `"false"` hides PNG/PDF export |
 | `refresh` | Re-fetch every N seconds (minimum 10) |
@@ -148,6 +148,6 @@ Load a page of your web app that contains the tag in a WKWebView (iOS), WebView 
 ## Security notes
 
 - Datasetless never receives your data. The only network calls from the embed are to your own `source`, `metrics` and `ai-endpoint`, plus loading the Datasetless static files.
-- License keys are ECDSA-signed and checked in the browser against the embedding page's domain. `localhost` always works for development, and the `license="preview"` key unlocks Pro features on localhost only, with a visible ribbon.
+- License keys are ECDSA-signed and checked in the browser against the embedding page's domain. `localhost` always works for development, and the `license="preview"` key unlocks white-label features on localhost only, with a visible ribbon.
 - Generated SQL is restricted to a single read-only `SELECT` with no file or network access.
 - Business customers can host the built `dist/` folder on their own domain so no third party is involved at all.

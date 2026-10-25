@@ -19,11 +19,13 @@ export const LIMITS = {
   maxShareChars: 6000, // pasted tables larger than this are not embedded in share links
 };
 
-// Plans and checkout. Set the checkout links to Stripe Payment Links, Lemon Squeezy
-// or Paddle checkout URLs. Until set, the buttons go to VITE_CONTACT_URL.
-export const PRICING = {
-  pro: { price: env.VITE_PRICE_PRO || '$199', period: '/month per app', yearly: env.VITE_PRICE_PRO_YEARLY || '$1,990/year (2 months free)', checkout: env.VITE_CHECKOUT_PRO_URL || '' },
-  business: { price: env.VITE_PRICE_BUSINESS || '$799', period: '/month', yearly: 'Annual contracts and invoicing available', checkout: env.VITE_CHECKOUT_BUSINESS_URL || '' },
+// How companies reach you from the "Work with me" page.
+//  - VITE_FORM_ENDPOINT: a Formspree (or similar) form URL. Messages arrive in your inbox.
+//  - VITE_CONTACT_EMAIL: used for a pre-filled email when no form endpoint is set.
+//  - VITE_CONTACT_URL (above): a Cal.com / Calendly link for "Book a call".
+export const CONTACT = {
+  email: env.VITE_CONTACT_EMAIL || '',
+  formEndpoint: env.VITE_FORM_ENDPOINT || '',
 };
 
 // Public address of this deployment, used in "Powered by" links from embeds.

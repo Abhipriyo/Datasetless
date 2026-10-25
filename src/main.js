@@ -7,11 +7,10 @@ import { parsePasted } from './lib/parse.js';
 import { planFromText, normalisePlan, INDICATORS, COUNTRY_NAME, parseCountries } from './lib/sources/worldbank.js';
 import { SAMPLES, SAMPLE_BY_ID } from './lib/samples.js';
 import { loadSource, buildModel } from './lib/pipeline.js';
-import { parseContract, starterContract, FREE_METRIC_LIMIT } from './lib/metrics.js';
-import { verifyLicense, savedLicense, saveLicense, PLANS } from './lib/license.js';
-import { renderPricing, renderDevelopers } from './ui/pages.js';
+import { parseContract, starterContract } from './lib/metrics.js';
+import { renderContact, renderDevelopers } from './ui/pages.js';
 import { encodeShare, decodeShare, isShareable } from './lib/share.js';
-import { getAI, saveAI, PROVIDERS, testAI, planWorldBank, tableFromImage } from './lib/llm.js';
+import { getAI, setTransport, planWorldBank, tableFromImage } from './lib/llm.js';
 import { guardSelect } from './lib/sqlguard.js';
 import { BRAND, LIMITS } from './config.js';
 
@@ -20,8 +19,18 @@ let view = null;          // current view handle (destroy)
 let current = null;       // { source, spec }
 let busy = false;
 let lastFile = null;      // kept so a dashboard from an upload can be rebuilt (e.g. after editing metrics)
-let license = { valid: false, plan: PLANS.free };
-const licenseReady = verifyLicense(savedLicense()).then((r) => { license = r; return r; });
+
+// Optional AI for open-ended questions. Visitors never see a key: the site owner
+// sets VITE_AI_PROXY (e.g. /api/ask) and the API key lives on the server (see api/ask.js).
+const AI_PROXY = import.meta.env.VITE_AI_PROXY || '';
+if (AI_PROXY) {
+  setTransport(async (prompt) => {
+    const r = await fetch(AI_PROXY, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ system: prompt.system, user: prompt.user, maxTokens: prompt.maxTokens }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'The AI service is busy. Try again in a moment.');
+    return j.text || '';
+  });
+}
 
 // ---------------- theme ----------------
 const THEME_KEY = 'datasetless.theme';
@@ -47,28 +56,23 @@ themeBtn.onclick = () => {
 };
 setThemeIcon();
 
-const aiBtn = h('button', { class: 'btn btn-ghost btn-sm ai-btn', onclick: () => openSettings() });
-const setAiBtn = () => aiBtn.replaceChildren(icon('spark', 15), getAI() ? 'AI on' : 'Add AI key');
-setAiBtn();
 
 const header = h('header', { class: 'site-head no-print' },
   h('a', { class: 'logo', href: '#/', onclick: (e) => { e.preventDefault(); goHome(); } }, logoMark(), h('span', {}, BRAND.product)),
   h('nav', { class: 'nav' },
     h('a', { href: '#/', onclick: (e) => { e.preventDefault(); goHome('gallery'); } }, 'Gallery'),
     h('a', { href: '#/', onclick: (e) => { e.preventDefault(); goHome('business'); } }, 'Demos'),
-    h('a', { href: '#/developers' }, 'For developers'),
-    h('a', { href: '#/pricing' }, 'Pricing')),
+    h('a', { href: '#/developers' }, 'For developers')),
   h('div', { class: 'head-right' },
     BRAND.authorUrl ? h('a', { class: 'made-pill', href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, 'Made by ', h('b', {}, BRAND.author)) : h('span', { class: 'made-pill' }, 'Made by ', h('b', {}, BRAND.author)),
-    aiBtn, themeBtn));
+    h('a', { class: 'btn btn-primary btn-sm head-cta', href: '#/contact' }, 'Work with me'), themeBtn));
 const main = h('main', { id: 'main' });
 const siteFoot = h('footer', { class: 'site-foot no-print' },
-  h('div', {}, h('span', { class: 'logo-small' }, logoMark(16), BRAND.product), ' — made with ♥ by ', BRAND.authorUrl ? h('a', { href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, BRAND.author) : h('b', {}, BRAND.author), '.'),
+  h('div', {}, h('span', { class: 'logo-small' }, logoMark(16), BRAND.product), ' — made by ', BRAND.authorUrl ? h('a', { href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, BRAND.author) : h('b', {}, BRAND.author), '.'),
   h('div', { class: 'foot-links' },
     BRAND.githubUrl ? h('a', { href: BRAND.githubUrl, target: '_blank', rel: 'noopener' }, 'Source code') : null,
     h('a', { href: '#/developers' }, 'Developers'),
-    h('a', { href: '#/pricing' }, 'Pricing'),
-    BRAND.contactUrl ? h('a', { href: BRAND.contactUrl, target: '_blank', rel: 'noopener' }, 'Contact') : null,
+    h('a', { href: '#/contact' }, 'Work with me'),
     h('span', { class: 'muted' }, 'Public data: World Bank Open Data (CC BY 4.0) and the sources you link.')));
 app.replaceChildren(h('a', { class: 'skip', href: '#main' }, 'Skip to content'), header, main, siteFoot);
 
@@ -91,18 +95,18 @@ function goHome(anchor) {
 }
 
 const pageCtx = () => ({
-  license, origin: location.origin + location.pathname.replace(/[^/]*$/, ''),
-  onLicense: activateLicense, openSample: (id) => openSource({ type: 'sample', id }),
+  origin: location.origin + location.pathname.replace(/[^/]*$/, ''),
+  openSample: (id) => openSource({ type: 'sample', id }),
 });
 
 async function route() {
   const hash = location.hash || '#/';
   let m;
-  if (hash === '#/pricing' || hash === '#/developers') {
+  if (hash === '#/contact' || hash === '#/pricing' || hash === '#/developers') {
     current = null;
-    await licenseReady;
-    const render = hash === '#/pricing' ? renderPricing : renderDevelopers;
-    document.title = `${hash === '#/pricing' ? 'Pricing' : 'For developers'} · ${BRAND.product}`;
+    const isDev = hash === '#/developers';
+    const render = isDev ? renderDevelopers : renderContact;
+    document.title = `${isDev ? 'For developers' : 'Work with me'} · ${BRAND.product}`;
     setView(render(main, pageCtx()));
     window.scrollTo({ top: 0 });
     return;
@@ -166,6 +170,7 @@ const actions = {
   link: () => openLinkModal(),
   paste: () => openPasteModal(),
   image: () => openImageModal(),
+  aiEnabled: !!AI_PROXY,
 };
 
 // ---------------- loading overlay ----------------
@@ -211,13 +216,12 @@ async function openSource(source, { initial = null, push = true, file = null, me
   const L = showLoading(['Starting the query engine']);
   try {
     if (file) lastFile = file;
-    await licenseReady;
     const loaded = await loadSource(source, { step: L.step, file: file || lastFile, pickTable, pickSheet });
     source = loaded.source;
     const { opts, sourceInfo, planChip, questions } = loaded;
     if (sourceInfo.failed?.length) toast(`No data for: ${sourceInfo.failed.map((f) => f.ind.label).join(', ')}`);
     const contractIn = metrics !== undefined ? metrics : initial?.metrics || null;
-    const { profile, spec } = await buildModel(opts, { initial, metrics: contractIn, metricLimit: license.plan.metrics, step: L.step });
+    const { profile, spec } = await buildModel(opts, { initial, metrics: contractIn, metricLimit: Infinity, step: L.step });
     const defaultTitle = initial?.title ? null : spec.title;
     current = { source, spec, profile, metrics: contractIn };
 
@@ -239,7 +243,6 @@ async function openSource(source, { initial = null, push = true, file = null, me
       buildMs: performance.now() - t0,
       onHome: () => goHome(),
       onUpload: () => openUpload(sourceInfo.sample),
-      onSettings: () => openSettings(),
       onEditSource: source.type === 'worldbank' ? () => openWBEditor(source) : null,
       onShare: () => share(source),
       onMetrics: () => openMetricsEditor(),
@@ -270,13 +273,11 @@ function openMetricsEditor() {
   const startObj = current.metrics || starterContract(profile, spec);
   const ta = h('textarea', { class: 'input code-area', rows: 18, spellcheck: 'false', 'aria-label': 'metrics.json' }, JSON.stringify(startObj, null, 2));
   const cols = h('p', { class: 'muted small' }, 'Columns: ', profile.columns.map((c) => c.name).join(', '));
-  const limitNote = license.plan.metrics === Infinity ? null
-    : h('p', { class: 'note-pill' }, icon('info', 14), ` Free plan: up to ${FREE_METRIC_LIMIT} metrics. `, h('a', { href: '#/pricing' }, 'Pro is unlimited.'));
   modal({
     title: 'Metrics contract (metrics.json)', wide: true,
     body: h('div', { class: 'stack' },
       h('p', { class: 'small' }, 'Define your official numbers once. Every KPI, chart and AI answer uses exactly these definitions, and each metric is tested against the data. Companies keep this file in their own code repository.'),
-      ta, cols, limitNote,
+      ta, cols,
       h('details', { class: 'mini-docs' }, h('summary', {}, 'Test types'),
         h('ul', { class: 'small' },
           h('li', {}, h('code', {}, '{"type":"min","value":0}'), ' / ', h('code', {}, 'max'), ' / ', h('code', {}, '{"type":"between","value":[0,100]}'), ' — checked for every period'),
@@ -328,19 +329,10 @@ function openEmbedCode(source) {
       h('p', { class: 'small' }, 'Paste into any website, CMS (WordPress, Webflow, Notion, SharePoint) or app. Data is loaded live in each viewer’s browser.'),
       box('Any website or no-code tool (iframe)', iframe),
       box('Web component (auto-resizes, emits events)', wc),
-      license.plan.whiteLabel ? null : h('p', { class: 'note-pill' }, icon('info', 14), ' Free embeds show a small “Powered by Datasetless” badge. ', h('a', { href: '#/pricing' }, 'Pro removes it.'))),
+      h('p', { class: 'note-pill' }, icon('info', 14), ' Want this inside your company’s software, on your real data and your brand? ', h('a', { href: '#/contact' }, 'Let’s talk.'))),
   });
 }
 
-// ---------------- license ----------------
-async function activateLicense(key) {
-  const r = await verifyLicense(key);
-  if (!r.valid) { toast(r.reason || 'That key is not valid.', 'error', 7000); return r; }
-  saveLicense(key);
-  license = r;
-  toast(`${r.plan.name} plan active${r.org ? ` for ${r.org}` : ''}.`, 'success');
-  return r;
-}
 
 async function pickTable(tables) {
   hideLoading();
@@ -429,8 +421,8 @@ function openImageModal() {
   if (!getAI()) {
     modal({
       title: 'Snap a table',
-      body: h('div', { class: 'stack' }, h('p', {}, 'Reading a table from a photo or screenshot uses an AI vision model with your own API key. The key stays in this browser.'), h('p', { class: 'muted' }, 'Prefer no AI? Copy the table as text and use “Paste a table”.')),
-      actions: [{ label: 'Paste a table instead', onClick: (c) => { c(); openPasteModal(); } }, { label: 'Add AI key', primary: true, onClick: (c) => { c(); openSettings(); } }],
+      body: h('div', { class: 'stack' }, h('p', {}, 'Reading tables from photos isn’t switched on for this site yet.'), h('p', { class: 'muted' }, 'Copy the table as text and use “Paste a table” instead: it works with spreadsheets, web pages, emails and PDFs.')),
+      actions: [{ label: 'Paste a table instead', primary: true, onClick: (c) => { c(); openPasteModal(); } }],
     });
     return;
   }
@@ -453,32 +445,6 @@ function openImageModal() {
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('drop', (e) => { e.preventDefault(); run(e.dataTransfer.files[0]); });
   m = modal({ title: 'Snap a table', body: drop });
-}
-
-function openSettings() {
-  const s = getAI() || { provider: 'anthropic', key: '', model: '' };
-  const prov = h('select', { class: 'select', 'aria-label': 'Provider' }, Object.entries(PROVIDERS).map(([k, p]) => h('option', { value: k, selected: k === s.provider }, p.name)));
-  const key = h('input', { class: 'input', type: 'password', value: s.key || '', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'API key' });
-  const model = h('input', { class: 'input', type: 'text', value: s.model || '', 'aria-label': 'Model' });
-  const base = h('input', { class: 'input', type: 'url', value: s.baseUrl || '', placeholder: 'https://api.groq.com/openai/v1', 'aria-label': 'Base URL' });
-  const baseRow = h('label', { class: 'field' }, h('span', {}, 'Base URL'), base);
-  const sync = () => { const p = PROVIDERS[prov.value]; key.placeholder = p.keyHint; model.placeholder = p.model || 'model name'; baseRow.hidden = !p.needsBase; };
-  prov.onchange = sync; sync();
-  const read = () => ({ provider: prov.value, key: key.value.trim(), model: model.value.trim(), baseUrl: base.value.trim() });
-  modal({
-    title: 'AI settings',
-    body: h('div', { class: 'stack' },
-      h('p', { class: 'muted small' }, 'Optional. Adds plain-English questions, smarter question routing and reading tables from images. Your key is stored only in this browser and requests go straight to the provider — no Datasetless server is involved.'),
-      h('label', { class: 'field' }, h('span', {}, 'Provider'), prov),
-      h('label', { class: 'field' }, h('span', {}, 'API key'), key),
-      h('label', { class: 'field' }, h('span', {}, 'Model (optional)'), model),
-      baseRow),
-    actions: [
-      { label: 'Remove key', onClick: (c) => { saveAI(null); setAiBtn(); toast('AI key removed from this browser.'); c(); } },
-      { label: 'Test', onClick: async () => { const r = read(); if (!r.key) return toast('Enter a key first.', 'error'); saveAI(r); try { await testAI(); toast('Connected.', 'success'); } catch (e) { toast(e.message, 'error'); } setAiBtn(); } },
-      { label: 'Save', primary: true, onClick: (c) => { const r = read(); if (!r.key) return toast('Enter a key first.', 'error'); if (r.provider === 'compatible' && !/^https:\/\//.test(r.baseUrl)) return toast('Enter an https base URL.', 'error'); saveAI(r); setAiBtn(); toast('Saved. AI features are on.', 'success'); c(); } },
-    ],
-  });
 }
 
 function openWBEditor(source) {

@@ -1,9 +1,7 @@
-// Pricing and Developers pages — the two pages a business buyer reads.
+// "Work with me" and "For developers" pages: the two pages a business reads.
 import { h, icon, toast } from './components.js';
-import { BRAND, PRICING } from '../config.js';
-import { FREE_METRIC_LIMIT } from '../lib/metrics.js';
+import { BRAND, CONTACT } from '../config.js';
 
-const contactOr = (url) => url || BRAND.contactUrl || '';
 
 function codeBlock(text, lang = '') {
   const pre = h('pre', { class: `code lang-${lang}` }, text);
@@ -35,111 +33,133 @@ function tabs(groups) {
 }
 
 // ====================================================================
-export function renderPricing(root, ctx) {
-  const lic = ctx.license;
-  const plan = (o) => h('div', { class: `plan ${o.featured ? 'plan-featured' : ''} ${o.tone}` },
-    o.featured ? h('span', { class: 'sticker s-sun plan-flag' }, 'Most popular') : null,
-    h('div', { class: 'plan-emoji', 'aria-hidden': 'true' }, o.emoji),
-    h('h3', {}, o.name),
-    h('p', { class: 'plan-for' }, o.for),
-    h('div', { class: 'plan-price' }, h('b', {}, o.price), h('span', {}, o.period)),
-    h('p', { class: 'plan-yearly' }, o.yearly || ' '),
-    o.cta,
-    h('ul', { class: 'plan-list' }, o.features.map((f) => h('li', {}, icon('check', 15), h('span', {}, f)))));
+// "Work with me": turns interest in this version into conversations with companies.
+export function renderContact(root, ctx) {
+  const card = (emoji, tone, head, text) => h('div', { class: `offer ${tone}` }, h('div', { class: 'offer-emoji', 'aria-hidden': 'true' }, emoji), h('h3', {}, head), h('p', {}, text));
+  const step = (n, tone, head, text) => h('div', { class: `step ${tone}` }, h('div', { class: 'step-num mono' }, n), h('h3', {}, head), h('p', {}, text));
 
-  const ctaLink = (url, label, primary) => url
-    ? h('a', { class: `btn ${primary ? 'btn-primary' : ''} plan-cta`, href: url, target: '_blank', rel: 'noopener' }, label, icon('arrow', 16))
-    : h('span', { class: 'btn plan-cta disabled', title: 'Set VITE_CHECKOUT_PRO_URL or VITE_CONTACT_URL' }, 'Available soon');
+  const offers = h('section', { class: 'section' },
+    h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'What I can build for you'), h('h2', {}, 'This app, on your real data'),
+      h('p', {}, 'Everything you’ve seen here, set up for your company. You don’t need a data team or a new BI tool.')),
+    h('div', { class: 'offers' },
+      card('🧩', 't-sky', 'Dashboards inside your product', 'Give your customers analytics on their own data, inside your SaaS. Each customer sees only their own numbers.'),
+      card('🏢', 't-sun', 'Internal dashboards', 'For sales, operations and finance teams. Connected to your database, Google Sheets, CRM or regular exports.'),
+      card('💬', 't-pink', 'Ask your data', 'Your team types a question in plain English and gets the answer, a chart and the SQL behind it.'),
+      card('✅', 't-mint', 'Numbers everyone trusts', 'Your official metrics are defined once and checked automatically, so they’re the same in every report.'),
+      card('🔐', 't-lilac', 'Private by design', 'Your data stays in your systems. The engine runs in the browser or on your own servers.'),
+      card('🎨', 't-peach', 'Your brand', 'Your colours, your domain, no third-party badge. It looks like part of your product.')));
 
-  const plans = h('div', { class: 'plans' },
-    plan({
-      name: 'Free', emoji: '🌱', tone: 't-mint', for: 'For individuals, side projects and trying it in your product.',
-      price: '$0', period: 'forever', yearly: 'No card, no signup',
-      cta: h('a', { class: 'btn plan-cta', href: '#/' }, 'Start building', icon('arrow', 16)),
-      features: [
-        'Full web app: upload, links, public data, sample dashboards',
-        'Automatic dashboards, SQL on every chart, data checks',
-        'Share links, PNG and PDF export',
-        'Embed anywhere (with a small “Powered by Datasetless” badge)',
-        `Metrics contract: up to ${FREE_METRIC_LIMIT} verified metrics`,
-        'Plain-English questions in the web app with your own AI key',
-      ],
-    }),
-    plan({
-      name: 'Pro', emoji: '🚀', tone: 't-sun', featured: true, for: 'For SaaS teams putting analytics inside their product.',
-      price: PRICING.pro.price, period: PRICING.pro.period, yearly: PRICING.pro.yearly,
-      cta: ctaLink(contactOr(PRICING.pro.checkout), 'Get Pro', true),
-      features: [
-        'Everything in Free',
-        'White-label: no badge, your accent colour',
-        'Unlimited verified metrics with tests',
-        'AI questions inside your product, via your own AI endpoint (any model)',
-        'Events API for filters and clicks',
-        'Up to 3 production domains · email support',
-      ],
-    }),
-    plan({
-      name: 'Business', emoji: '🏢', tone: 't-lilac', for: 'For companies with many apps, strict security reviews or custom needs.',
-      price: PRICING.business.price, period: PRICING.business.period, yearly: PRICING.business.yearly,
-      cta: ctaLink(contactOr(PRICING.business.checkout), 'Talk to us'),
-      features: [
-        'Everything in Pro',
-        'Unlimited domains and apps',
-        'Self-host the whole engine on your own CDN: zero third parties',
-        'Onboarding call and priority support',
-        'Custom connectors and features on request',
-        'Security questionnaire help and invoicing',
-      ],
-    }));
+  const process = h('section', { class: 'section' },
+    h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'How we’d work together'), h('h2', {}, 'From first call to live in weeks')),
+    h('div', { class: 'steps' },
+      step('1', 't-sky', 'A free 30-minute call', 'Show me your data and what you want to see. I’ll tell you honestly whether this is a good fit.'),
+      step('2', 't-sun', 'A pilot on your real data', 'A working dashboard on your own data, in your own stack, so you can judge it with real numbers.'),
+      step('3', 't-mint', 'Launch and improve', 'Roll it out to your team or customers. I stay on hand for changes, new metrics and support.')));
 
-  const keyInput = h('input', { class: 'input', type: 'text', placeholder: 'DSL1.…', 'aria-label': 'License key', spellcheck: 'false', autocomplete: 'off' });
-  const status = h('p', { class: 'small lic-status' });
-  const setStatus = (r) => {
-    status.replaceChildren(r.valid
-      ? h('span', { class: 'ok' }, icon('check', 14), ` ${r.plan.name} active${r.org ? ` for ${r.org}` : ''}${r.exp ? ` · renews or expires ${r.exp}` : ''}`)
-      : h('span', { class: 'muted' }, 'You are on the Free plan in this browser.'));
-  };
-  setStatus(lic);
-  const licBox = h('section', { class: 'lic-box' },
-    h('div', {}, h('h3', {}, 'Have a license key?'), h('p', { class: 'small muted' }, 'Activate it here for the web app. For embeds, pass it in the license attribute (see For developers). Keys are checked in your browser, so nothing is sent anywhere.')),
-    h('form', { class: 'lic-form', onsubmit: async (e) => { e.preventDefault(); const r = await ctx.onLicense(keyInput.value); if (r.valid) { keyInput.value = ''; setStatus(r); } } }, keyInput, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Activate')),
-    status);
+  const stack = h('section', { class: 'section' },
+    h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'Fits what you already use'), h('h2', {}, 'No need to change your software')),
+    h('div', { class: 'stack-chips' }, ['React', 'Vue', 'Angular', 'Next.js', 'Plain HTML', 'WordPress', 'Webflow', 'Salesforce', 'SharePoint', 'iOS', 'Android', 'Flutter',
+      'Postgres', 'MySQL', 'SQL Server', 'Snowflake', 'BigQuery', 'Google Sheets', 'Excel', 'Shopify', 'Stripe', 'HubSpot', 'Any REST API'].map((t) => h('span', { class: 'tag' }, t))),
+    h('p', { class: 'small muted stack-note' }, 'Technical details for your developers are on the ', h('a', { href: '#/developers' }, 'For developers'), ' page.'));
 
-  const row = (label, a, b) => h('tr', {}, h('th', {}, label), h('td', {}, a), h('td', { class: 'us' }, b));
-  const compare = h('section', { class: 'section' },
-    h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'Why it’s different'), h('h2', {}, 'Not another BI tool'),
-      h('p', {}, 'Most embedded analytics run on the vendor’s servers. Datasetless runs inside your users’ browsers, which changes everything below.')),
-    h('div', { class: 'table-scroll compare' }, h('table', { class: 'data-table' },
-      h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', {}, 'Typical embedded BI'), h('th', { class: 'us' }, 'Datasetless'))),
-      h('tbody', {},
-        row('Where your data goes', 'Through the vendor’s cloud', 'Your API → your user’s browser. Never to us.'),
-        row('Security review', 'New sub-processor to assess', 'No new data processor in the path'),
-        row('Pricing', 'Often per viewer or per query', 'Flat per app, unlimited viewers'),
-        row('Metric definitions', 'Set up in the vendor’s UI', 'metrics.json in your own repo, with tests'),
-        row('AI', 'The vendor’s model, the vendor’s servers', 'Any model, through your own endpoint'),
-        row('Integration', 'SDK per framework', 'One tag for any stack, iframe for no-code, WebView for mobile'),
-        row('Speed of filters', 'Network round trip per click', 'Instant: queries run locally')))));
+  // ---------- form ----------
+  const field = (label, input, hint) => h('label', { class: 'field' }, h('span', {}, label), input, hint ? h('small', { class: 'muted' }, hint) : null);
+  const name = h('input', { class: 'input', name: 'name', required: true, autocomplete: 'name' });
+  const email = h('input', { class: 'input', name: 'email', type: 'email', required: true, autocomplete: 'email' });
+  const company = h('input', { class: 'input', name: 'company', required: true, autocomplete: 'organization' });
+  const site = h('input', { class: 'input', name: 'website', type: 'text', placeholder: 'yourcompany.com', autocomplete: 'url' });
+  const trap = h('input', { class: 'trap', name: 'company_url', tabindex: '-1', autocomplete: 'off', 'aria-hidden': 'true' });
+  const needs = ['Dashboards inside our product', 'Internal dashboards for our team', 'Ask-your-data for our team', 'Something else'];
+  const picks = h('div', { class: 'pick-row' }, needs.map((n) => {
+    const cb = h('input', { type: 'checkbox', value: n });
+    return h('label', { class: 'pick' }, cb, h('span', {}, n));
+  }));
+  const msg = h('textarea', { class: 'input', name: 'message', rows: 5, placeholder: 'What data do you have, and what would you like to see? Any deadline?' });
+  const send = h('button', { class: 'btn btn-primary btn-lg', type: 'submit' }, 'Send message', icon('arrow', 18));
+  const note = h('p', { class: 'small form-note', 'aria-live': 'polite' });
+  const form = h('form', { class: 'contact-form', novalidate: true },
+    h('div', { class: 'row2' }, field('Your name', name), field('Work email', email)),
+    h('div', { class: 'row2' }, field('Company', company), field('Website (optional)', site)),
+    h('div', { class: 'field' }, h('span', {}, 'What are you looking for?'), picks),
+    field('Tell me a bit more', msg),
+    trap,
+    h('div', { class: 'form-actions' }, send, BRAND.contactUrl ? h('a', { class: 'btn btn-lg', href: BRAND.contactUrl, target: '_blank', rel: 'noopener' }, 'Or book a call') : null),
+    note);
+  const formBox = h('div', { class: 'form-box' }, form);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (trap.value) return; // bots fill hidden fields
+    const data = {
+      name: name.value.trim(), email: email.value.trim(), company: company.value.trim(), website: site.value.trim(),
+      interest: [...picks.querySelectorAll('input:checked')].map((c) => c.value).join(', '), message: msg.value.trim(),
+      source: `Datasetless (${location.host})`,
+    };
+    if (!data.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email) || !data.company) {
+      note.className = 'small form-note bad';
+      note.textContent = 'Please add your name, a valid work email and your company.';
+      return;
+    }
+    const done = () => formBox.replaceChildren(h('div', { class: 'sent' },
+      h('div', { class: 'sent-emoji', 'aria-hidden': 'true' }, '🎉'),
+      h('h3', {}, `Thanks, ${data.name.split(' ')[0]}!`),
+      h('p', {}, `I’ll get back to you at ${data.email} soon to set up a short call.`),
+      h('p', { class: 'muted' }, `— ${BRAND.author}`)));
+    if (CONTACT.formEndpoint) {
+      send.disabled = true; note.className = 'small form-note'; note.textContent = 'Sending…';
+      try {
+        const r = await fetch(CONTACT.formEndpoint, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ ...data, _subject: `Datasetless enquiry from ${data.company}` }) });
+        if (!r.ok) throw new Error(String(r.status));
+        done();
+      } catch {
+        send.disabled = false;
+        note.className = 'small form-note bad';
+        note.textContent = CONTACT.email ? `That didn’t send. Please email ${CONTACT.email} instead.` : 'That didn’t send. Please try again in a moment.';
+      }
+      return;
+    }
+    if (CONTACT.email) {
+      const body = `Hi ${BRAND.author},\n\n${data.message || 'I’d like to talk about using Datasetless at our company.'}\n\nLooking for: ${data.interest || '—'}\n\n${data.name}\n${data.company}${data.website ? ` · ${data.website}` : ''}\n${data.email}`;
+      location.href = `mailto:${CONTACT.email}?subject=${encodeURIComponent(`Datasetless for ${data.company}`)}&body=${encodeURIComponent(body)}`;
+      done();
+      return;
+    }
+    note.className = 'small form-note bad';
+    note.textContent = BRAND.contactUrl ? 'Messages aren’t switched on yet. Please use “Book a call”.' : 'Contact details haven’t been set up for this site yet.';
+  });
+
+  const contact = h('section', { class: 'section contact', id: 'contact-form' },
+    h('div', { class: 'contact-grid' },
+      h('div', { class: 'contact-copy' },
+        h('div', { class: 'kicker mono' }, 'Get in touch'),
+        h('h2', {}, 'Tell me about your project'),
+        h('p', {}, 'A few lines about your data and what you’d like to see is enough. I read every message myself.'),
+        h('ul', { class: 'plan-list' },
+          ['Free first call, no obligation', 'A clear, fixed quote after we talk', 'Your data stays with you throughout'].map((x) => h('li', {}, icon('check', 15), h('span', {}, x)))),
+        h('div', { class: 'me-card' }, h('div', { class: 'me-avatar', 'aria-hidden': 'true' }, BRAND.author.slice(0, 1)),
+          h('div', {}, h('b', {}, BRAND.author), h('span', { class: 'muted small' }, 'Builder of Datasetless'),
+            BRAND.authorUrl ? h('a', { class: 'small', href: BRAND.authorUrl, target: '_blank', rel: 'noopener' }, 'Portfolio') : null))),
+      formBox));
 
   const faq = h('section', { class: 'section faq' },
-    h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'FAQ'), h('h2', {}, 'Questions buyers ask')),
+    h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'FAQ'), h('h2', {}, 'Questions companies ask')),
     ...[
-      ['Do you ever see our data?', 'No. Your backend sends data straight to your logged-in user’s browser, and the SQL engine runs there. Datasetless has no server in that path. Business customers can even host the engine files themselves.'],
-      ['How is the license checked without a server?', 'License keys are digitally signed. The embed verifies the signature and your domain in the browser, so it works offline and never phones home.'],
-      ['How much data can it handle?', 'Comfortably up to a few million rows per customer view in a modern browser. For bigger accounts, send pre-summarised data or Parquet files from your storage; the docs show how.'],
-      ['Which AI models work?', 'Any. On Pro, the embed sends prompts to an endpoint on your server, which calls the model you choose (Claude, GPT, Gemini, open-source). Your key stays on your server.'],
-      ['What if a better AI comes out?', 'You plug it into the same endpoint. The part you own — tested metric definitions, tenant isolation and the in-browser engine — stays, and the new model gets more accurate by answering through it.'],
-      ['Can we cancel?', 'Yes, any time. Keys run until their expiry date, and the Free plan keeps working forever.'],
-    ].map(([q, a]) => h('details', { class: 'faq-item' }, h('summary', {}, q, icon('chevron', 14)), h('p', {}, a))));
+      ['Do you need access to our data?', 'Only as much as you’re comfortable with. Dashboards run in your users’ browsers or on your own servers, and I can build and test with sample or anonymised data.'],
+      ['Will it work with our software?', 'Almost certainly. It drops into any website or web app, no-code tools that allow embeds, and mobile apps. It reads from any database or API you already have.'],
+      ['How long does it take?', 'A first pilot on your real data usually takes one to two weeks, depending on how your data is set up.'],
+      ['What does it cost?', 'It depends on what you need. After a short call you get a clear fixed quote. There are no per-user or per-viewer fees.'],
+      ['Can our team maintain it?', 'Yes. Metric definitions live in a simple file in your own code, and I document everything. Ongoing support is available if you want it.'],
+    ].map(([qq, a]) => h('details', { class: 'faq-item' }, h('summary', {}, qq, icon('chevron', 14)), h('p', {}, a))));
 
-  root.replaceChildren(h('div', { class: 'page pricing' },
+  root.replaceChildren(h('div', { class: 'page contact-page' },
     h('section', { class: 'page-hero' },
-      h('div', { class: 'eyebrow' }, h('span', { class: 'sticker s-mint' }, 'No per-viewer fees'), 'Because there are no servers to run'),
-      h('h1', {}, 'Simple pricing for ', h('span', { class: 'w-pink' }, 'every'), ' dashboard.'),
-      h('p', { class: 'page-sub' }, 'Start free. Upgrade when you put Datasetless inside your product and want it fully yours.')),
-    plans, licBox, compare, faq,
-    h('section', { class: 'cta' },
-      h('div', {}, h('h2', {}, 'See it inside a real app 👀'), h('p', {}, 'Open the Acme demo: a pretend SaaS product where three different customers each see only their own data.')),
-      h('a', { class: 'btn btn-primary btn-lg', href: 'demo/acme.html', target: '_blank' }, 'Open the live demo', icon('arrow', 18)))));
+      h('div', { class: 'eyebrow' }, h('span', { class: 'sticker s-sun' }, `👋 Hi, I’m ${BRAND.author}`), 'I built Datasetless'),
+      h('h1', {}, 'Want this inside ', h('span', { class: 'w-pink' }, 'your company'), '?'),
+      h('p', { class: 'page-sub' }, 'You’ve seen what it does with sample and public data. I can set up the same thing on your real data, inside your product, internal tools or website, so your team and customers get answers in seconds.'),
+      h('div', { class: 'hero-row' },
+        h('a', { class: 'btn btn-primary btn-lg', href: '#/contact', onclick: (e) => { e.preventDefault(); document.getElementById('contact-form').scrollIntoView({ behavior: 'smooth' }); setTimeout(() => name.focus({ preventScroll: true }), 500); } }, 'Tell me about your project', icon('arrow', 18)),
+        h('a', { class: 'btn btn-lg', href: 'demo/acme.html', target: '_blank' }, 'See it inside a demo app'))),
+    offers, process, stack, contact, faq));
   return {};
 }
 
@@ -192,7 +212,7 @@ export function renderDevelopers(root, ctx) {
     ] },
     { name: 'Big data & AI', items: [
       { label: 'Parquet from S3', lang: 'js', code: `// Millions of rows: export a Parquet file per customer nightly, then\n// hand the browser a short-lived link to that customer's file only.\napp.get('/api/reports/data', requireAuth, async (req, res) => {\n  const url = await getSignedUrl(s3, new GetObjectCommand({\n    Bucket: 'reports', Key: \`tenants/\${req.user.tenantId}/orders.parquet\`,\n  }), { expiresIn: 300 });\n  res.redirect(url);   // the bucket needs a CORS rule for your app's domain\n});` },
-      { label: 'AI endpoint (Pro)', lang: 'js', code: `// <datasetless-dashboard ai-endpoint="/api/reports/ai" ...>\n// Datasetless sends { system, user }. Call any model; return { text }.\napp.post('/api/reports/ai', requireAuth, express.json(), async (req, res) => {\n  const { system, user } = req.body;\n  const r = await anthropic.messages.create({\n    model: 'claude-sonnet-5-5', max_tokens: 1500, system,\n    messages: [{ role: 'user', content: user }],\n  });\n  res.json({ text: r.content[0].text });\n});`, note: 'Prompts contain your column names, 5 sample rows and query results. They go only to your server and the model you choose.' },
+      { label: 'AI endpoint', lang: 'js', code: `// <datasetless-dashboard ai-endpoint="/api/reports/ai" ...>\n// Datasetless sends { system, user }. Call any model; return { text }.\napp.post('/api/reports/ai', requireAuth, express.json(), async (req, res) => {\n  const { system, user } = req.body;\n  const r = await anthropic.messages.create({\n    model: 'claude-sonnet-5-5', max_tokens: 1500, system,\n    messages: [{ role: 'user', content: user }],\n  });\n  res.json({ text: r.content[0].text });\n});`, note: 'Prompts contain your column names, 5 sample rows and query results. They go only to your server and the model you choose.' },
     ] },
   ];
 
@@ -219,9 +239,9 @@ export function renderDevelopers(root, ctx) {
     ['format', 'csv · json · parquet · xlsx. Usually detected automatically.'],
     ['title', 'Dashboard title. Defaults to the metrics title.'],
     ['theme', 'light · dark · auto (default).'],
-    ['accent', 'Brand colour, e.g. #4f46e5 (Pro).'],
-    ['license', 'Your license key. Unlocks white-label, AI and unlimited metrics.'],
-    ['ai-endpoint', 'Your server route for AI questions (Pro).'],
+    ['accent', 'Brand colour, e.g. #4f46e5 (with a license key).'],
+    ['license', 'License key provided with your setup. Removes the badge and enables brand colour and AI.'],
+    ['ai-endpoint', 'Your server route for open-ended AI questions (optional).'],
     ['sql', 'Show a read-only SQL tab to your users.'],
     ['exports', '"false" hides PNG/PDF export.'],
     ['refresh', 'Re-fetch data every N seconds.'],
@@ -249,7 +269,7 @@ export function renderDevelopers(root, ctx) {
       h('p', { class: 'page-sub' }, 'Drop a dashboard into your product, internal tool or mobile app. Your API decides what each customer sees; the engine runs in their browser. No data pipeline to us, no per-viewer bill.'),
       h('div', { class: 'hero-row' },
         h('a', { class: 'btn btn-primary btn-lg', href: 'demo/acme.html', target: '_blank' }, 'Open the live demo app', icon('arrow', 18)),
-        h('a', { class: 'btn btn-lg', href: '#/pricing' }, 'See pricing'))),
+        h('a', { class: 'btn btn-lg', href: '#/contact' }, 'Talk to me'))),
     h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'The data path'), h('h2', {}, 'Where your data goes (and doesn’t)')), flow),
     h('section', { class: 'section' },
       h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'Step 1'), h('h2', {}, 'Add one endpoint to your backend'),
@@ -271,8 +291,8 @@ export function renderDevelopers(root, ctx) {
       h('div', { class: 'section-head' }, h('div', { class: 'kicker mono' }, 'Reference'), h('h2', {}, 'Attributes, events and methods')),
       h('div', { class: 'two-col' }, refTable(attrs, 'Attribute', 'What it does'), h('div', { class: 'stack' }, refTable(events, 'Event', 'detail'), refTable(methods, 'Method', 'What it does')))),
     h('section', { class: 'cta' },
-      h('div', {}, h('h2', {}, 'Try it in your app today 🛠️'), h('p', {}, 'The Free plan works in production with a small badge. Upgrade for white-label, AI and unlimited metrics.')),
-      h('a', { class: 'btn btn-primary btn-lg', href: '#/pricing' }, 'See plans', icon('arrow', 18)))));
+      h('div', {}, h('h2', {}, 'Want help setting it up? 🛠️'), h('p', {}, `${BRAND.author} can integrate it into your stack, connect your data and define your metrics with your team.`)),
+      h('a', { class: 'btn btn-primary btn-lg', href: '#/contact' }, 'Work with me', icon('arrow', 18)))));
   return {};
 }
 

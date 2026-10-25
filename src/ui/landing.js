@@ -97,7 +97,7 @@ export function renderLanding(root, act) {
       way('upload', 'Upload a file', 'CSV, Excel, JSON, Parquet', 't-sky', act.upload),
       way('link', 'Paste a link', 'Wikipedia, Sheets, GitHub', 't-mint', act.link),
       way('table', 'Paste a table', 'From a sheet, email or PDF', 't-pink', act.paste),
-      way('image', 'Snap a table', 'Photo or screenshot', 't-lilac', act.image)));
+      act.aiEnabled ? way('image', 'Snap a table', 'Photo or screenshot', 't-lilac', act.image) : null));
 
   const tones = { store: 't-pink', restaurant: 't-peach', saas: 't-sky', agency: 't-lilac' };
   const emojis = { store: '🛍️', restaurant: '🍜', saas: '🚀', agency: '📣' };
@@ -124,12 +124,12 @@ export function renderLanding(root, act) {
       step('🔎', 't-sky', 'Find the data', 'Your question is matched to live public sources, or your own file, link or table is loaded into a SQL engine inside your browser.'),
       step('🧮', 't-sun', 'Write the SQL', 'Columns are profiled, then KPIs, trends, rankings and comparisons are generated. Every chart shows the exact SQL behind it.'),
       step('✅', 't-mint', 'Check before you trust', 'Automatic checks flag missing values, partial periods, duplicates and outliers, so a pretty chart never hides bad data.')),
-    h('div', { class: 'privacy' }, h('span', { class: 'privacy-emoji', 'aria-hidden': 'true' }, '🔒'), h('p', {}, h('b', {}, 'Private by design. '), 'Files you upload never leave your device — there’s no server to send them to. Optional AI features use your own key, sent straight from your browser to the provider you pick.')));
+    h('div', { class: 'privacy' }, h('span', { class: 'privacy-emoji', 'aria-hidden': 'true' }, '🔒'), h('p', {}, h('b', {}, 'Private by design. '), 'Files you upload never leave your device — there’s no server to send them to. Questions about your data are answered right here in your browser.')));
 
-  const cta = BRAND.contactUrl ? h('section', { class: 'cta' },
+  const cta = h('section', { class: 'cta' },
     h('div', {}, h('h2', {}, 'Want this on your live business data? 👋'),
       h('p', {}, `${BRAND.author} builds custom dashboards and data tools connected to your Shopify, database, POS or ads accounts — updating automatically, with logins and scheduled reports.`)),
-    h('a', { class: 'btn btn-primary btn-lg', href: BRAND.contactUrl, target: '_blank', rel: 'noopener' }, `Work with ${BRAND.author}`, icon('arrow', 18))) : null;
+    h('a', { class: 'btn btn-primary btn-lg', href: '#/contact' }, `Work with ${BRAND.author}`, icon('arrow', 18)));
 
   const biz = h('section', { class: 'section', id: 'for-business' },
     sectionHead('For businesses', 'Put it inside your product', 'Give your customers dashboards on their own data, in your app, with one HTML tag. Works with any stack, no-code tool or mobile app.'),
@@ -140,7 +140,7 @@ export function renderLanding(root, act) {
     h('div', { class: 'hero-row biz-cta' },
       h('a', { class: 'btn btn-primary btn-lg', href: 'demo/acme.html', target: '_blank' }, 'See it inside a demo app', icon('arrow', 18)),
       h('a', { class: 'btn btn-lg', href: '#/developers' }, 'Integration guide'),
-      h('a', { class: 'btn btn-lg btn-ghost', href: '#/pricing' }, 'Pricing')));
+      h('a', { class: 'btn btn-lg btn-ghost', href: '#/contact' }, 'Talk to me')));
 
   root.replaceChildren(h('div', { class: 'landing' }, hero, ticker, ways, business, gallery, biz, how, cta));
   setTimeout(() => input.focus({ preventScroll: true }), 50);
